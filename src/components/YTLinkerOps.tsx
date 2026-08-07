@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { SearchResultItem, ChannelItem, PlaylistItem, Language, ThemeMode, ColorTag } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { SearchResultItem, ChannelItem, PlaylistItem, Language, ThemeMode, ColorTag, FavoriteFolder } from '../types';
 import { t } from '../utils/translations';
 import {
   syncFirestoreFavorites,
   saveFavoriteToFirestore,
-  removeFavoriteFromFirestore
+  removeFavoriteFromFirestore,
+  syncFavoriteFolders,
+  saveFavoriteFolderToFirestore,
+  deleteFavoriteFolderFromFirestore
 } from '../lib/firebase';
 import {
   Search,
@@ -44,7 +47,15 @@ import {
   Calendar,
   Filter,
   Star,
-  Heart
+  Heart,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Minimize2,
+  Maximize2,
+  PictureInPicture2,
+  Shrink,
+  Expand
 } from 'lucide-react';
 
 const SERVER_SEARCH_TIMEOUT_MS = 12_000;
@@ -104,6 +115,58 @@ export const YTLinkerOps: React.FC<Props> = ({
   });
 
   const [favoritesFilter, setFavoritesFilter] = useState<'all' | 'videos' | 'channels' | 'playlists'>('all');
+
+  // Favorite Folders: organize favorite videos into multiple named folders
+  const [favoriteFolders, setFavoriteFolders] = useState<FavoriteFolder[]>(() => {
+    try {
+      const saved = localStorage.getItem('yt_linker_fav_folders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeFavoriteFolderId, setActiveFavoriteFolderId] = useState<string>('all');
+  const [newFolderNameInput, setNewFolderNameInput] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('yt_linker_fav_folders', JSON.stringify(favoriteFolders));
+  }, [favoriteFolders]);
+
+  useEffect(() => {
+    const unsubscribe = syncFavoriteFolders((folders) => {
+      if (folders.length > 0) setFavoriteFolders(folders as FavoriteFolder[]);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleCreateFavoriteFolder = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const folder: FavoriteFolder = {
+      id: `fld_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name: trimmed,
+      createdAt: new Date().toISOString()
+    };
+    setFavoriteFolders((prev) => [folder, ...prev]);
+    saveFavoriteFolderToFirestore(folder);
+    setNewFolderNameInput('');
+    setActiveFavoriteFolderId(folder.id);
+    showToast(`تم إنشاء مجلد "${trimmed}" داخل المفضلة`);
+  };
+
+  const handleDeleteFavoriteFolder = (folderId: string) => {
+    setFavoriteFolders((prev) => prev.filter((f) => f.id !== folderId));
+    setFavoriteVideos((prev) => prev.map((v) => (v.folderId === folderId ? { ...v, folderId: undefined } : v)));
+    deleteFavoriteFolderFromFirestore(folderId);
+    if (activeFavoriteFolderId === folderId) setActiveFavoriteFolderId('all');
+    showToast('تم حذف المجلد (بقيت الفيديوهات في المفضلة العامة)');
+  };
+
+  const handleAssignFavoriteVideoToFolder = (video: SearchResultItem, folderId: string | undefined) => {
+    const updated = { ...video, folderId };
+    setFavoriteVideos((prev) => prev.map((v) => (v.id === video.id ? updated : v)));
+    saveFavoriteToFirestore(updated, 'video');
+  };
 
   useEffect(() => {
     localStorage.setItem('yt_linker_fav_videos', JSON.stringify(favoriteVideos));
@@ -288,6 +351,209 @@ export const YTLinkerOps: React.FC<Props> = ({
 
   // Video Preview Modal
   const [previewVideo, setPreviewVideo] = useState<SearchResultItem | null>(null);
+
+  // Playback queue (playlist behind the preview player) + player UI state
+  const [playerQueue, setPlayerQueue] = useState<SearchResultItem[]>([]);
+  const [playerQueueIndex, setPlayerQueueIndex] = useState(0);
+  const [playerMinimized, setPlayerMinimized] = useState(false);
+  type PlayerSize = 'compact' | 'standard' | 'large' | 'theater';
+  const [playerSize, setPlayerSize] = useState<PlayerSize>('standard');
+  const [isPipActive, setIsPipActive] = useState(false);
+  const ytPlayerRef = useRef<any>(null);
+  const ytPlayerContainerRef = useRef<HTMLDivElement | null>(null);
+  const pipWindowRef = useRef<Window | null>(null);
+  const playerDockRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the queue in sync with whichever video is currently previewed.
+  // If the video was opened directly (not via openPlayerQueue), fall back to a single-item queue.
+  useEffect(() => {
+    if (!previewVideo) return;
+    setPlayerQueue((prevQueue) => {
+      const idx = prevQueue.findIndex((v) => v.id === previewVideo.id);
+      if (idx !== -1) {
+        setPlayerQueueIndex(idx);
+        return prevQueue;
+      }
+      setPlayerQueueIndex(0);
+      return [previewVideo];
+    });
+  }, [previewVideo?.id]);
+
+  const openPlayerQueue = (videos: SearchResultItem[], startIndex: number = 0) => {
+    const valid = videos.filter((v) => v && v.id);
+    if (valid.length === 0) {
+      showToast(lang === 'ar' ? 'لا توجد فيديوهات صالحة للتشغيل في هذه القائمة' : 'No playable videos in this list');
+      return;
+    }
+    const safeIndex = Math.min(Math.max(startIndex, 0), valid.length - 1);
+    setPlayerQueue(valid);
+    setPlayerQueueIndex(safeIndex);
+    setPreviewVideo(valid[safeIndex]);
+    setPlayerMinimized(false);
+  };
+
+  const handlePlayerNext = () => {
+    if (playerQueue.length === 0) return;
+    const nextIndex = (playerQueueIndex + 1) % playerQueue.length;
+    setPlayerQueueIndex(nextIndex);
+    setPreviewVideo(playerQueue[nextIndex]);
+  };
+
+  const handlePlayerPrev = () => {
+    if (playerQueue.length === 0) return;
+    const prevIndex = (playerQueueIndex - 1 + playerQueue.length) % playerQueue.length;
+    setPlayerQueueIndex(prevIndex);
+    setPreviewVideo(playerQueue[prevIndex]);
+  };
+
+  const closePlayerAndCleanupPip = () => {
+    if (pipWindowRef.current) {
+      try { pipWindowRef.current.close(); } catch {}
+      pipWindowRef.current = null;
+    }
+    setIsPipActive(false);
+    setPlayerMinimized(false);
+    setPreviewVideo(null);
+    setPlayerQueue([]);
+    setPlayerQueueIndex(0);
+  };
+
+  const handleTogglePictureInPicture = async () => {
+    const w: any = window;
+    if (!('documentPictureInPicture' in w)) {
+      // Not supported (Safari / Firefox) — fall back to the in-page docked mini player.
+      setPlayerMinimized(true);
+      showToast(lang === 'ar'
+        ? 'المتصفح لا يدعم النافذة العائمة الحقيقية، تم التصغير داخل الصفحة بدلاً منها'
+        : 'True floating PiP is not supported here, minimized inside the page instead');
+      return;
+    }
+    try {
+      if (isPipActive && pipWindowRef.current) {
+        pipWindowRef.current.close();
+        return;
+      }
+      const pipWindow: Window = await w.documentPictureInPicture.requestWindow({ width: 420, height: 300 });
+      pipWindowRef.current = pipWindow;
+
+      // Copy stylesheets so the embedded player container looks consistent in the PiP window
+      [...document.styleSheets].forEach((sheet) => {
+        try {
+          const cssRules = [...sheet.cssRules].map((rule) => rule.cssText).join('');
+          const style = pipWindow.document.createElement('style');
+          style.textContent = cssRules;
+          pipWindow.document.head.appendChild(style);
+        } catch {
+          if (sheet.href) {
+            const link = pipWindow.document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = sheet.href;
+            pipWindow.document.head.appendChild(link);
+          }
+        }
+      });
+      pipWindow.document.body.style.margin = '0';
+      pipWindow.document.body.style.background = '#000';
+
+      if (ytPlayerContainerRef.current) {
+        pipWindow.document.body.appendChild(ytPlayerContainerRef.current);
+      }
+
+      setIsPipActive(true);
+      pipWindow.addEventListener('pagehide', () => {
+        // Move the player back into the main document when the PiP window closes
+        if (ytPlayerContainerRef.current && playerDockRef.current) {
+          playerDockRef.current.appendChild(ytPlayerContainerRef.current);
+        }
+        pipWindowRef.current = null;
+        setIsPipActive(false);
+      });
+    } catch (err) {
+      console.warn('Document Picture-in-Picture failed, falling back to minimized mode:', err);
+      setPlayerMinimized(true);
+    }
+  };
+
+  // Loads the official YouTube IFrame Player API once, then creates/reuses a real
+  // YT.Player instance so we can detect "video ended" and auto-advance the queue,
+  // instead of a raw <iframe src="..."> that offers no playback events.
+  const ensureYouTubeIframeApi = (): Promise<void> => {
+    const w: any = window;
+    if (w.YT && w.YT.Player) return Promise.resolve();
+    if (!w.__ytIframeApiPromise) {
+      w.__ytIframeApiPromise = new Promise<void>((resolve) => {
+        const prevCallback = w.onYouTubeIframeAPIReady;
+        w.onYouTubeIframeAPIReady = () => {
+          if (typeof prevCallback === 'function') prevCallback();
+          resolve();
+        };
+        if (!document.getElementById('yt-iframe-api-script')) {
+          const tag = document.createElement('script');
+          tag.id = 'yt-iframe-api-script';
+          tag.src = 'https://www.youtube.com/iframe_api';
+          document.head.appendChild(tag);
+        }
+      });
+    }
+    return w.__ytIframeApiPromise;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!previewVideo) {
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+        ytPlayerRef.current.destroy();
+        ytPlayerRef.current = null;
+      }
+      return;
+    }
+
+    ensureYouTubeIframeApi().then(() => {
+      if (cancelled || !previewVideo) return;
+
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+        ytPlayerRef.current.loadVideoById(previewVideo.id);
+        return;
+      }
+
+      if (!ytPlayerContainerRef.current) return;
+      ytPlayerRef.current = new (window as any).YT.Player(ytPlayerContainerRef.current, {
+        videoId: previewVideo.id,
+        playerVars: { autoplay: 1, rel: 0 },
+        events: {
+          onStateChange: (event: any) => {
+            // 0 = ended. Advance to the next item only if this preview came from a queue of 2+ videos.
+            if (event.data === 0) {
+              setPlayerQueue((currentQueue) => {
+                if (currentQueue.length > 1) {
+                  setPlayerQueueIndex((currentIndex) => {
+                    const next = (currentIndex + 1) % currentQueue.length;
+                    setPreviewVideo(currentQueue[next]);
+                    return next;
+                  });
+                }
+                return currentQueue;
+              });
+            }
+          }
+        }
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewVideo?.id]);
+
+  // Destroy the player on unmount only
+  useEffect(() => {
+    return () => {
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+        ytPlayerRef.current.destroy();
+      }
+    };
+  }, []);
 
   // Channel drilldown modal
   const [selectedChannel, setSelectedChannel] = useState<ChannelItem | null>(null);
@@ -751,11 +1017,6 @@ export const YTLinkerOps: React.FC<Props> = ({
     return true;
   };
 
-  // Perform initial search on mount
-  useEffect(() => {
-    performYouTubeSearch('الخزانة');
-  }, []);
-
   const performYouTubeSearch = async (searchQuery: string) => {
     if (!searchQuery.trim()) return;
     setLoading(true);
@@ -818,9 +1079,13 @@ export const YTLinkerOps: React.FC<Props> = ({
     }
 
     // Otherwise, fetch next page from server
+    if (!query.trim()) {
+      setLoadingMoreSearch(false);
+      return;
+    }
     setLoadingMoreSearch(true);
     const nextPage = searchPage + 1;
-    const currentQuery = query.trim() || 'الخزانة';
+    const currentQuery = query.trim();
 
     try {
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(currentQuery)}&page=${nextPage}`);
@@ -2198,6 +2463,17 @@ export const YTLinkerOps: React.FC<Props> = ({
 
                           {/* Folder Actions */}
                           <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                            {folder.items.length > 0 && (
+                              <button
+                                onClick={() => openPlayerQueue(folder.items)}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 border border-sky-500/30 flex items-center gap-1"
+                                title="تشغيل كل فيديوهات المجلد تسلسليًا"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <span>تشغيل الكل</span>
+                              </button>
+                            )}
+
                             <button
                               onClick={() => openChunkerModal(folder.items, `مجلد: ${folder.name}`)}
                               className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-amber-500 hover:text-amber-400 bg-amber-500/10 border border-amber-500/30 flex items-center gap-1"
@@ -2431,6 +2707,99 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </button>
               </div>
 
+              {/* Favorite Folders: organize favorite videos into multiple named folders */}
+              {(favoritesFilter === 'all' || favoritesFilter === 'videos') && favoriteVideos.length > 0 && (
+                <div className="space-y-2 border-b pb-3 border-black/5 dark:border-white/5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-xs font-bold opacity-70 flex items-center gap-1.5">
+                      <Folder className="w-3.5 h-3.5" />
+                      <span>مجلدات المفضلة</span>
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={newFolderNameInput}
+                        onChange={(e) => setNewFolderNameInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFavoriteFolder(newFolderNameInput); }}
+                        placeholder="اسم مجلد جديد"
+                        className="text-xs px-2 py-1.5 rounded-md w-36"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCreateFavoriteFolder(newFolderNameInput)}
+                        className="text-xs px-2.5 py-1.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/30 flex items-center gap-1 font-bold whitespace-nowrap"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>مجلد جديد</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveFavoriteFolderId('all')}
+                      className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        activeFavoriteFolderId === 'all'
+                          ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                          : 'bg-black/5 dark:bg-white/5 opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      الكل ({favoriteVideos.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFavoriteFolderId('unsorted')}
+                      className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        activeFavoriteFolderId === 'unsorted'
+                          ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                          : 'bg-black/5 dark:bg-white/5 opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      بلا مجلد ({favoriteVideos.filter((v) => !v.folderId).length})
+                    </button>
+
+                    {favoriteFolders.map((folder) => {
+                      const folderVideos = favoriteVideos.filter((v) => v.folderId === folder.id);
+                      return (
+                        <div key={folder.id} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setActiveFavoriteFolderId(folder.id)}
+                            className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                              activeFavoriteFolderId === folder.id
+                                ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                                : 'bg-black/5 dark:bg-white/5 opacity-70 hover:opacity-100'
+                            }`}
+                          >
+                            {folder.name} ({folderVideos.length})
+                          </button>
+                          {activeFavoriteFolderId === folder.id && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openPlayerQueue(folderVideos)}
+                                title="تشغيل الكل تسلسليًا"
+                                className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/30"
+                              >
+                                <Play className="w-3 h-3 fill-current" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFavoriteFolder(folder.id)}
+                                title="حذف المجلد (تبقى الفيديوهات في المفضلة)"
+                                className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/30"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Empty state */}
               {favoriteVideos.length === 0 && favoriteChannels.length === 0 && favoritePlaylists.length === 0 ? (
                 <div className={`p-12 text-center rounded-2xl border opacity-70 ${isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'}`}>
@@ -2443,15 +2812,33 @@ export const YTLinkerOps: React.FC<Props> = ({
               ) : (
                 <div className="space-y-8">
                   {/* Favorite Videos */}
-                  {(favoritesFilter === 'all' || favoritesFilter === 'videos') && favoriteVideos.length > 0 && (
+                  {(favoritesFilter === 'all' || favoritesFilter === 'videos') && favoriteVideos.length > 0 && (() => {
+                    const visibleFavoriteVideos = favoriteVideos.filter((v) => {
+                      if (activeFavoriteFolderId === 'all') return true;
+                      if (activeFavoriteFolderId === 'unsorted') return !v.folderId;
+                      return v.folderId === activeFavoriteFolderId;
+                    });
+                    return (
                     <div className="space-y-3">
-                      <h4 className="font-bold text-sm text-amber-400 flex items-center gap-2">
-                        <Film className="w-4 h-4" />
-                        <span>الفيديوهات المفضلة ({favoriteVideos.length})</span>
-                      </h4>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h4 className="font-bold text-sm text-amber-400 flex items-center gap-2">
+                          <Film className="w-4 h-4" />
+                          <span>الفيديوهات المفضلة ({visibleFavoriteVideos.length})</span>
+                        </h4>
+                        {visibleFavoriteVideos.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => openPlayerQueue(visibleFavoriteVideos)}
+                            className="text-[11px] font-bold text-sky-400 hover:underline flex items-center gap-1.5 bg-sky-500/10 border border-sky-500/30 px-2.5 py-1 rounded-lg"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>تشغيل الكل تسلسليًا ({visibleFavoriteVideos.length})</span>
+                          </button>
+                        )}
+                      </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {favoriteVideos.map((item) => (
+                        {visibleFavoriteVideos.map((item, idx) => (
                           <div
                             key={item.id}
                             className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all group relative ${
@@ -2461,7 +2848,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                             <div className="aspect-video relative bg-slate-900 rounded-lg overflow-hidden mb-2 group/thumb">
                               <img src={item.thumbnail} alt={item.thumbnailAlt} className="w-full h-full object-cover" />
                               <button
-                                onClick={() => setPreviewVideo(item)}
+                                onClick={() => openPlayerQueue(visibleFavoriteVideos, idx)}
                                 className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center text-white"
                               >
                                 <Play className="w-8 h-8 fill-current text-sky-400" />
@@ -2482,31 +2869,45 @@ export const YTLinkerOps: React.FC<Props> = ({
                                 <p className="text-[11px] opacity-70 truncate">{item.channelTitle}</p>
                               </div>
 
-                              <div className="pt-2 mt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-2">
-                                <button
-                                  onClick={() => setPreviewVideo(item)}
-                                  className="text-[11px] font-bold text-sky-400 hover:underline flex items-center gap-1"
+                              <div className="pt-2 mt-2 border-t border-black/5 dark:border-white/5 space-y-2">
+                                <select
+                                  value={item.folderId || ''}
+                                  onChange={(e) => handleAssignFavoriteVideoToFolder(item, e.target.value || undefined)}
+                                  className="w-full text-[10px] px-1.5 py-1 rounded-md"
+                                  title="نقل إلى مجلد"
                                 >
-                                  <Play className="w-3 h-3 fill-current" />
-                                  <span>معاينة وتشغيل</span>
-                                </button>
+                                  <option value="">بلا مجلد</option>
+                                  {favoriteFolders.map((f) => (
+                                    <option key={f.id} value={f.id}>{f.name}</option>
+                                  ))}
+                                </select>
+                                <div className="flex items-center justify-between gap-2">
+                                  <button
+                                    onClick={() => openPlayerQueue(visibleFavoriteVideos, idx)}
+                                    className="text-[11px] font-bold text-sky-400 hover:underline flex items-center gap-1"
+                                  >
+                                    <Play className="w-3 h-3 fill-current" />
+                                    <span>معاينة وتشغيل</span>
+                                  </button>
 
-                                <a
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-sky-400 hover:text-sky-300 p-1"
-                                  title="فتح في يوتيوب"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
+                                  <a
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-sky-400 hover:text-sky-300 p-1"
+                                    title="فتح في يوتيوب"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                </div>
                               </div>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Favorite Channels */}
                   {(favoritesFilter === 'all' || favoritesFilter === 'channels') && favoriteChannels.length > 0 && (
@@ -3237,95 +3638,190 @@ export const YTLinkerOps: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Modal: Live Video Preview & Player */}
+        {/* Modal: Live Video Preview & Player (queue-aware, resizable, minimizable) */}
         {previewVideo && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-            <div className={`w-full max-w-3xl flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
-              isLight ? 'bg-white border-[#c1c9b6] text-black' : 'bg-[#141c2e] border-white/10 text-white'
+          <div className={playerMinimized
+            ? 'fixed bottom-4 left-4 z-50 w-72'
+            : 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md'
+          }>
+            <div className={`w-full flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
+              playerMinimized
+                ? 'bg-black border-white/10 text-white'
+                : `${{ compact: 'max-w-md', standard: 'max-w-3xl', large: 'max-w-5xl', theater: 'max-w-7xl' }[playerSize]} ${
+                    isLight ? 'bg-white border-[#c1c9b6] text-black' : 'bg-[#141c2e] border-white/10 text-white'
+                  }`
             }`}>
-              {/* Header */}
-              <div className="p-4 border-b border-black/10 dark:border-white/10 flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0 pr-2">
-                  <Play className="w-5 h-5 text-sky-400 flex-shrink-0 fill-current" />
-                  <h3 className="font-bold text-sm truncate">{previewVideo.title}</h3>
-                </div>
-                <button
-                  onClick={() => setPreviewVideo(null)}
-                  className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                  title={t(lang, 'close')}
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* YouTube Embed Player */}
-              <div className="aspect-video w-full bg-black relative">
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${previewVideo.id}?autoplay=1`}
-                  title={previewVideo.title}
-                  className="w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              </div>
-
-              {/* Footer details & actions */}
-              <div className="p-4 space-y-3 bg-black/5 dark:bg-white/5">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-sky-400">{previewVideo.channelTitle || 'YouTube Video'}</span>
-                    {previewVideo.channelTitle && (
-                      <button
-                        onClick={() => {
-                          handleOpenChannelFromVideo(previewVideo);
-                          setPreviewVideo(null);
-                        }}
-                        className="px-2.5 py-1 rounded-md text-xs font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 transition-all flex items-center gap-1.5 shadow"
-                        title="الدخول مباشرة إلى هذه القناة واستخراج كافة فيديوهاتها وقوائمها"
-                      >
-                        <Users className="w-3.5 h-3.5 text-sky-400" />
-                        <span>الدخول إلى القناة</span>
-                      </button>
+              {/* Full Header (hidden while minimized) */}
+              {!playerMinimized && (
+                <div className="p-4 border-b border-black/10 dark:border-white/10 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 min-w-0 pr-2">
+                    <Play className="w-5 h-5 text-sky-400 flex-shrink-0 fill-current" />
+                    <h3 className="font-bold text-sm truncate">{previewVideo.title}</h3>
+                    {playerQueue.length > 1 && (
+                      <span className="text-[10px] font-mono opacity-60 flex-shrink-0">
+                        {playerQueueIndex + 1} / {playerQueue.length}
+                      </span>
                     )}
-                    {previewVideo.duration && <span className="opacity-70 font-mono">• {previewVideo.duration}</span>}
-                    {previewVideo.views && <span className="opacity-70">• {previewVideo.views}</span>}
                   </div>
 
-                  <a
-                    href={previewVideo.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sky-400 hover:underline font-semibold flex items-center gap-1"
-                  >
-                    <span>مشاهدة مباشرة على YouTube</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/* Size controls */}
+                    <div className="flex items-center gap-0.5 bg-black/10 dark:bg-white/5 rounded-lg p-0.5">
+                      {([
+                        ['compact', 'مصغّرة'],
+                        ['standard', 'عادية'],
+                        ['large', 'كبيرة'],
+                        ['theater', 'مسرحية']
+                      ] as [PlayerSize, string][]).map(([size, label]) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => setPlayerSize(size)}
+                          title={`حجم النافذة: ${label}`}
+                          className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
+                            playerSize === size
+                              ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                              : 'opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-black/10 dark:border-white/10">
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(previewVideo.url);
-                      showToast(lang === 'ar' ? 'تم نسخ رابط الفيديو!' : 'Copied video URL!');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 ${
-                      isLight ? 'border-[#205100] text-[#205100] hover:bg-[#205100]/10' : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
-                    }`}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>نسخ رابط الفيديو</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={handleTogglePictureInPicture}
+                      title="نافذة عائمة (Picture-in-Picture)"
+                      className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                    >
+                      <PictureInPicture2 className="w-4 h-4" />
+                    </button>
 
-                  <button
-                    onClick={() => setPreviewVideo(null)}
-                    className={`px-5 py-1.5 rounded-lg text-xs font-bold ${
-                      isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
-                    }`}
-                  >
-                    {t(lang, 'close')}
+                    <button
+                      type="button"
+                      onClick={() => setPlayerMinimized(true)}
+                      title="تصغير والاستمرار في التصفح"
+                      className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                    >
+                      <Minimize2 className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={closePlayerAndCleanupPip}
+                      className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                      title={t(lang, 'close')}
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mini Header (visible only while minimized) */}
+              {playerMinimized && (
+                <div className="px-2.5 py-1.5 flex items-center justify-between gap-2 bg-black/80">
+                  <p className="text-[11px] font-bold truncate flex-1">{previewVideo.title}</p>
+                  <button type="button" onClick={() => setPlayerMinimized(false)} title="تكبير" className="p-1 opacity-80 hover:opacity-100">
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button type="button" onClick={closePlayerAndCleanupPip} title={t(lang, 'close')} className="p-1 opacity-80 hover:opacity-100">
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              )}
+
+              {/* Player dock — this DOM node stays mounted across size/minimize/PiP changes */}
+              <div ref={playerDockRef} className="aspect-video w-full bg-black relative">
+                <div ref={ytPlayerContainerRef} className="w-full h-full" />
               </div>
+
+              {/* Queue navigation (shown whenever there is more than one video queued) */}
+              {playerQueue.length > 1 && (
+                <div className={`flex items-center justify-between gap-2 px-3 py-2 ${playerMinimized ? 'bg-black/90' : 'border-t border-black/10 dark:border-white/10'}`}>
+                  <button
+                    type="button"
+                    onClick={handlePlayerPrev}
+                    className="p-1.5 rounded-lg opacity-80 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 text-xs font-bold"
+                    title="الفيديو السابق في القائمة"
+                  >
+                    <SkipBack className="w-4 h-4" />
+                    {!playerMinimized && <span>السابق</span>}
+                  </button>
+                  {!playerMinimized && (
+                    <span className="text-[11px] font-mono opacity-60">{playerQueueIndex + 1} / {playerQueue.length}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handlePlayerNext}
+                    className="p-1.5 rounded-lg opacity-80 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 flex items-center gap-1 text-xs font-bold"
+                    title="الفيديو التالي في القائمة"
+                  >
+                    {!playerMinimized && <span>التالي</span>}
+                    <SkipForward className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Footer details & actions (hidden while minimized to keep the dock small) */}
+              {!playerMinimized && (
+                <div className="p-4 space-y-3 bg-black/5 dark:bg-white/5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-sky-400">{previewVideo.channelTitle || 'YouTube Video'}</span>
+                      {previewVideo.channelTitle && (
+                        <button
+                          onClick={() => {
+                            handleOpenChannelFromVideo(previewVideo);
+                            closePlayerAndCleanupPip();
+                          }}
+                          className="px-2.5 py-1 rounded-md text-xs font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 transition-all flex items-center gap-1.5 shadow"
+                          title="الدخول مباشرة إلى هذه القناة واستخراج كافة فيديوهاتها وقوائمها"
+                        >
+                          <Users className="w-3.5 h-3.5 text-sky-400" />
+                          <span>الدخول إلى القناة</span>
+                        </button>
+                      )}
+                      {previewVideo.duration && <span className="opacity-70 font-mono">• {previewVideo.duration}</span>}
+                      {previewVideo.views && <span className="opacity-70">• {previewVideo.views}</span>}
+                    </div>
+
+                    <a
+                      href={previewVideo.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sky-400 hover:underline font-semibold flex items-center gap-1"
+                    >
+                      <span>مشاهدة مباشرة على YouTube</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-black/10 dark:border-white/10">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(previewVideo.url);
+                        showToast(lang === 'ar' ? 'تم نسخ رابط الفيديو!' : 'Copied video URL!');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 ${
+                        isLight ? 'border-[#205100] text-[#205100] hover:bg-[#205100]/10' : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
+                      }`}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>نسخ رابط الفيديو</span>
+                    </button>
+
+                    <button
+                      onClick={closePlayerAndCleanupPip}
+                      className={`px-5 py-1.5 rounded-lg text-xs font-bold ${
+                        isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                      }`}
+                    >
+                      {t(lang, 'close')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

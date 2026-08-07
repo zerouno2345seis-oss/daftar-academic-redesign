@@ -17,6 +17,13 @@ export interface SearchResultItem {
   publishedAt?: string;
   colorTag?: ColorTag;
   isFavorite?: boolean;
+  folderId?: string;
+}
+
+export interface FavoriteFolder {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 export interface ChannelItem {

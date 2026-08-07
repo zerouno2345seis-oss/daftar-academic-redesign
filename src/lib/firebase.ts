@@ -78,3 +78,45 @@ export const removeFavoriteFromFirestore = async (idOrUrl: string) => {
     console.error('Error removing favorite from Firestore:', err);
   }
 };
+
+// Favorite Folders (multiple named folders inside Favorites, distinct from
+// the general "Collections" feature)
+export const syncFavoriteFolders = (
+  onUpdate: (folders: any[]) => void
+) => {
+  try {
+    const q = query(collection(db, 'favoriteFolders'));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const folders: any[] = [];
+        snapshot.forEach((docSnap) => folders.push(docSnap.data()));
+        onUpdate(folders);
+      },
+      (error) => {
+        console.warn('Firestore favoriteFolders listener error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to Firestore favorite folders:', err);
+    return () => {};
+  }
+};
+
+export const saveFavoriteFolderToFirestore = async (folder: { id: string; name: string; createdAt: string }) => {
+  try {
+    const docRef = doc(db, 'favoriteFolders', folder.id);
+    await setDoc(docRef, folder);
+  } catch (err) {
+    console.error('Error saving favorite folder to Firestore:', err);
+  }
+};
+
+export const deleteFavoriteFolderFromFirestore = async (id: string) => {
+  try {
+    const docRef = doc(db, 'favoriteFolders', id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Error deleting favorite folder from Firestore:', err);
+  }
+};

@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* في الوضع الفاتح، لون sky الافتراضي (سماوي فاتح) ضعيف التباين على الخلفية الكريمية.
+   نستبدل درجاته بأزرق أشد تشبعًا هنا فقط، فيتحدث تلقائيًا في كل مكان يستخدم فئات sky-* دون تعديل كل استخدام على حدة. */
+.light {
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0369a1;
+  --color-sky-500: #075985;
+}
+
 @layer base {
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
