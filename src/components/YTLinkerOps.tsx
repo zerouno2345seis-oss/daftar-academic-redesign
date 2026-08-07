@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SearchResultItem, ChannelItem, PlaylistItem, Language, ThemeMode, ColorTag, FavoriteFolder } from '../types';
 import { t } from '../utils/translations';
+import { BeforeInstallPromptEvent, clearDeferredInstallPrompt, getDeferredInstallPrompt } from '../pwa';
 import {
   syncFirestoreFavorites,
   saveFavoriteToFirestore,
@@ -129,6 +130,10 @@ export const YTLinkerOps: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'search' | 'collections' | 'favorites' | 'history' | 'settings'>('search');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [pwaInstalled, setPwaInstalled] = useState(false);
+  const [isIosDevice, setIsIosDevice] = useState(false);
+  const [showPwaInstructions, setShowPwaInstructions] = useState(false);
 
   // Favorites state stored in LocalStorage
   const [favoriteVideos, setFavoriteVideos] = useState<SearchResultItem[]>(() => {
@@ -835,6 +840,52 @@ export const YTLinkerOps: React.FC<Props> = ({
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  useEffect(() => {
+    const standaloneMedia = window.matchMedia('(display-mode: standalone)');
+    const isStandalone = standaloneMedia.matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+    setPwaInstalled(isStandalone);
+    setIsIosDevice(isIos);
+
+    const syncInstallPrompt = () => setDeferredInstallPrompt(getDeferredInstallPrompt());
+    const handleAppInstalled = () => {
+      setPwaInstalled(true);
+      clearDeferredInstallPrompt();
+      setDeferredInstallPrompt(null);
+      showToast(lang === 'ar' ? 'تم تثبيت التطبيق بنجاح!' : 'App installed successfully!');
+    };
+
+    syncInstallPrompt();
+    window.addEventListener('yt-pwa-install-available', syncInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    return () => {
+      window.removeEventListener('yt-pwa-install-available', syncInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, [lang]);
+
+  const handleInstallPwa = async () => {
+    if (pwaInstalled) return;
+
+    if (deferredInstallPrompt) {
+      const prompt = deferredInstallPrompt;
+      clearDeferredInstallPrompt();
+      setDeferredInstallPrompt(null);
+      await prompt.prompt();
+      const { outcome } = await prompt.userChoice;
+      if (outcome === 'accepted') setPwaInstalled(true);
+      return;
+    }
+
+    if (isIosDevice) {
+      setShowPwaInstructions(true);
+      return;
+    }
+
+    showToast(t(lang, 'pwaInstallUnavailable'));
   };
 
   const parseYtInitialData = (data: any) => {
@@ -3277,6 +3328,51 @@ export const YTLinkerOps: React.FC<Props> = ({
                       {t(lang, 'glacierDark')}
                     </button>
                   </div>
+                </div>
+
+                <div className={`rounded-xl border p-4 ${isLight ? 'border-[#c1c9b6] bg-[#f7fbed]' : 'border-sky-400/20 bg-sky-500/5'}`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-sm flex items-center gap-2">
+                        <Download className="w-4 h-4 text-sky-400" />
+                        {t(lang, 'pwaLabel')}
+                      </h4>
+                      <p className="text-xs opacity-70 mt-1 leading-relaxed">{t(lang, 'pwaDescription')}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleInstallPwa}
+                      disabled={pwaInstalled}
+                      className={`shrink-0 px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 border ${
+                        pwaInstalled
+                          ? isLight
+                            ? 'border-[#c1c9b6] text-[#205100] bg-white/70 cursor-default'
+                            : 'border-emerald-400/30 text-emerald-300 bg-emerald-500/10 cursor-default'
+                          : isLight
+                            ? 'border-[#205100] bg-[#205100] text-white hover:bg-green-900'
+                            : 'border-sky-400 bg-sky-500 text-slate-950 hover:bg-sky-400'
+                      }`}
+                    >
+                      <Download className="w-4 h-4" />
+                      {pwaInstalled ? t(lang, 'pwaInstalled') : t(lang, 'installPwa')}
+                    </button>
+                  </div>
+
+                  {showPwaInstructions && (
+                    <div className={`mt-4 rounded-lg border p-3 text-xs leading-relaxed flex items-start gap-3 ${
+                      isLight ? 'border-[#c1c9b6] bg-white' : 'border-white/10 bg-black/10'
+                    }`}>
+                      <p className="flex-1">{t(lang, 'pwaIosInstructions')}</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowPwaInstructions(false)}
+                        className="p-1 rounded-md opacity-70 hover:opacity-100"
+                        aria-label={t(lang, 'close')}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

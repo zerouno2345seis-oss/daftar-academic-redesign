@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="يوتيوب أكاديمي">
+  <rect width="512" height="512" rx="112" fill="#0a0e1a"/>
+  <rect x="64" y="74" width="384" height="364" rx="74" fill="#141c2e" stroke="#38a5ed" stroke-width="16"/>
+  <path d="M187 170h138M187 250h138M187 330h90" stroke="#83ccff" stroke-width="26" stroke-linecap="round"/>
+  <circle cx="131" cy="170" r="20" fill="#38a5ed"/>
+  <circle cx="131" cy="250" r="20" fill="#38a5ed"/>
+  <circle cx="131" cy="330" r="20" fill="#38a5ed"/>
+</svg>
