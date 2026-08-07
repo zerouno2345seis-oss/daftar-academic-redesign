@@ -71,13 +71,19 @@ interface Props {
   theme: ThemeMode;
   onThemeToggle: () => void;
   lang: Language;
+  userEmail?: string;
+  onSignOut?: () => void;
 }
 
 export const YTLinkerOps: React.FC<Props> = ({
   theme,
   onThemeToggle,
-  lang
+  lang,
+  userEmail,
+  onSignOut
 }) => {
+  // فتح/إغلاق الشريط الجانبي على الشاشات الصغيرة
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const isLight = theme === 'editorial-light';
   const [items, setItems] = useState<SearchResultItem[]>([]);
   const [channels, setChannels] = useState<ChannelItem[]>([]);
@@ -356,8 +362,10 @@ export const YTLinkerOps: React.FC<Props> = ({
   const [playerQueue, setPlayerQueue] = useState<SearchResultItem[]>([]);
   const [playerQueueIndex, setPlayerQueueIndex] = useState(0);
   const [playerMinimized, setPlayerMinimized] = useState(false);
-  type PlayerSize = 'compact' | 'standard' | 'large' | 'theater';
+  type PlayerSize = 'compact' | 'standard' | 'large';
   const [playerSize, setPlayerSize] = useState<PlayerSize>('standard');
+  // وضع الصوت فقط: يبقى التشغيل جاريًا مع إخفاء الصورة تمامًا داخل المتصفح
+  const [audioOnlyMode, setAudioOnlyMode] = useState(false);
   const [isPipActive, setIsPipActive] = useState(false);
   const ytPlayerRef = useRef<any>(null);
   const ytPlayerContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1531,10 +1539,29 @@ export const YTLinkerOps: React.FC<Props> = ({
     <div className={`min-h-screen flex w-full transition-colors ${
       isLight ? 'bg-[#f7fbed] text-[#181d15]' : 'bg-[#0a0e1a] text-[#e0e8f0]'
     }`}>
+      {/* خلفية معتمة خلف الشريط الجانبي على الشاشات الصغيرة */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 z-20 lg:hidden"
+        />
+      )}
+
       {/* Sidebar Navigation */}
-      <nav className={`w-64 border-r flex flex-col py-6 px-4 fixed h-full z-20 ${
+      <nav className={`w-64 border-r flex flex-col py-6 px-4 fixed h-full z-30 overflow-y-auto transition-transform duration-200 ${
+        sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
+      } ${
         isLight ? 'bg-[#d7dccf] border-[#c1c9b6] text-[#205100]' : 'bg-[#141c2e] border-white/10 text-sky-400'
       }`}>
+        {/* زر إغلاق الشريط الجانبي (شاشات صغيرة فقط) */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-3 left-3 p-1.5 rounded-lg opacity-70 hover:opacity-100"
+          title="إغلاق القائمة"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         <div className="mb-6 px-2 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -1554,7 +1581,7 @@ export const YTLinkerOps: React.FC<Props> = ({
         {/* Tab Selection */}
         <div className="space-y-1.5 flex-1">
           <button
-            onClick={() => setActiveTab('search')}
+            onClick={() => { setActiveTab('search'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               activeTab === 'search'
                 ? isLight
@@ -1568,7 +1595,7 @@ export const YTLinkerOps: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('collections')}
+            onClick={() => { setActiveTab('collections'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               activeTab === 'collections'
                 ? isLight
@@ -1582,7 +1609,7 @@ export const YTLinkerOps: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('favorites')}
+            onClick={() => { setActiveTab('favorites'); setSidebarOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               activeTab === 'favorites'
                 ? isLight
@@ -1603,7 +1630,7 @@ export const YTLinkerOps: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('history')}
+            onClick={() => { setActiveTab('history'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               activeTab === 'history'
                 ? isLight
@@ -1617,7 +1644,7 @@ export const YTLinkerOps: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('settings')}
+            onClick={() => { setActiveTab('settings'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               activeTab === 'settings'
                 ? isLight
@@ -1665,19 +1692,44 @@ export const YTLinkerOps: React.FC<Props> = ({
       </nav>
 
       {/* Main Content Area */}
-      <div className={`flex-1 ${lang === 'ar' ? 'mr-64' : 'ml-64'} flex flex-col min-h-screen pb-24`}>
+      <div className={`flex-1 min-w-0 ${lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'} flex flex-col min-h-screen pb-24`}>
         {/* Header Bar */}
-        <header className={`h-16 border-b px-8 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md ${
+        <header className={`min-h-16 border-b px-4 sm:px-8 py-2 flex items-center justify-between gap-2 sticky top-0 z-10 backdrop-blur-md ${
           isLight ? 'bg-[#f7fbed]/80 border-[#c1c9b6]' : 'bg-[#0a0e1a]/80 border-white/10'
         }`}>
-          <div>
-            <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
-              <span>يوتيوب أكاديمي</span>
-            </h2>
-            <p className="text-xs opacity-60">{t(lang, 'appSubtitle')}</p>
+          <div className="flex items-center gap-2 min-w-0">
+            {/* زر فتح القائمة (شاشات صغيرة فقط) */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className={`lg:hidden p-2 rounded-lg border flex-shrink-0 ${
+                isLight ? 'border-[#c1c9b6] bg-white text-[#205100]' : 'border-white/10 bg-white/5 text-sky-400'
+              }`}
+              title="فتح القائمة"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-bold tracking-tight truncate">
+                يوتيوب أكاديمي
+              </h2>
+              <p className="text-xs opacity-60 hidden sm:block truncate">{t(lang, 'appSubtitle')}</p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {userEmail && onSignOut && (
+              <button
+                onClick={onSignOut}
+                className={`p-2 rounded-lg border text-xs font-semibold transition-all ${
+                  isLight ? 'border-[#c1c9b6] bg-white text-[#205100]' : 'border-white/10 bg-white/5 text-sky-400'
+                }`}
+                title={`تسجيل الخروج (${userEmail})`}
+              >
+                <span className="hidden md:inline">خروج</span>
+                <X className="w-4 h-4 md:hidden" />
+              </button>
+            )}
+
             {/* Theme Switcher */}
             <button
               onClick={onThemeToggle}
@@ -1693,7 +1745,7 @@ export const YTLinkerOps: React.FC<Props> = ({
         </header>
 
         {/* Canvas Body */}
-        <main className="p-8 space-y-6 max-w-7xl mx-auto w-full flex-1">
+        <main className="p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 min-w-0">
           {activeTab === 'search' && (
             <>
               {/* Target Query Search Box */}
@@ -3641,13 +3693,13 @@ export const YTLinkerOps: React.FC<Props> = ({
         {/* Modal: Live Video Preview & Player (queue-aware, resizable, minimizable) */}
         {previewVideo && (
           <div className={playerMinimized
-            ? 'fixed bottom-4 left-4 z-50 w-72'
-            : 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md'
+            ? `fixed bottom-4 left-4 z-50 ${audioOnlyMode ? 'w-60' : 'w-72'}`
+            : 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto'
           }>
             <div className={`w-full flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
               playerMinimized
                 ? 'bg-black border-white/10 text-white'
-                : `${{ compact: 'max-w-md', standard: 'max-w-3xl', large: 'max-w-5xl', theater: 'max-w-7xl' }[playerSize]} ${
+                : `${{ compact: 'max-w-md', standard: 'max-w-3xl', large: 'max-w-5xl' }[playerSize]} ${
                     isLight ? 'bg-white border-[#c1c9b6] text-black' : 'bg-[#141c2e] border-white/10 text-white'
                   }`
             }`}>
@@ -3664,30 +3716,44 @@ export const YTLinkerOps: React.FC<Props> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {/* Size controls */}
-                    <div className="flex items-center gap-0.5 bg-black/10 dark:bg-white/5 rounded-lg p-0.5">
-                      {([
-                        ['compact', 'مصغّرة'],
-                        ['standard', 'عادية'],
-                        ['large', 'كبيرة'],
-                        ['theater', 'مسرحية']
-                      ] as [PlayerSize, string][]).map(([size, label]) => (
-                        <button
-                          key={size}
-                          type="button"
-                          onClick={() => setPlayerSize(size)}
-                          title={`حجم النافذة: ${label}`}
-                          className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
-                            playerSize === size
-                              ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
-                              : 'opacity-60 hover:opacity-100'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+                    {/* Size controls (معطّلة بصريًا في وضع الصوت فقط) */}
+                    {!audioOnlyMode && (
+                      <div className="flex items-center gap-0.5 bg-black/10 dark:bg-white/5 rounded-lg p-0.5">
+                        {([
+                          ['compact', 'مصغّرة'],
+                          ['standard', 'عادية'],
+                          ['large', 'كبيرة']
+                        ] as [PlayerSize, string][]).map(([size, label]) => (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => setPlayerSize(size)}
+                            title={`حجم النافذة: ${label}`}
+                            className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
+                              playerSize === size
+                                ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                                : 'opacity-60 hover:opacity-100'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setAudioOnlyMode((v) => !v)}
+                      title={audioOnlyMode ? 'إظهار الصورة' : 'وضع الصوت فقط (إخفاء الصورة مع استمرار التشغيل)'}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        audioOnlyMode
+                          ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                          : 'opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10'
+                      }`}
+                    >
+                      <Shrink className="w-4 h-4" />
+                    </button>
 
                     <button
                       type="button"
@@ -3731,10 +3797,26 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* Player dock — this DOM node stays mounted across size/minimize/PiP changes */}
-              <div ref={playerDockRef} className="aspect-video w-full bg-black relative">
+              {/* Player dock — يبقى هذا العنصر مُركَّبًا دائمًا (حتى في وضع الصوت فقط) كي لا ينقطع التشغيل */}
+              <div
+                ref={playerDockRef}
+                className={`w-full bg-black relative ${audioOnlyMode ? 'h-0 overflow-hidden' : 'aspect-video'}`}
+              >
                 <div ref={ytPlayerContainerRef} className="w-full h-full" />
               </div>
+
+              {/* شريط بديل مرئي أثناء وضع الصوت فقط */}
+              {audioOnlyMode && (
+                <div className={`px-4 py-6 flex items-center gap-3 ${isLight ? 'bg-[#f7fbed]' : 'bg-black/40'}`}>
+                  <div className={`p-2.5 rounded-full flex-shrink-0 ${isLight ? 'bg-[#205100]/10 text-[#205100]' : 'bg-sky-500/15 text-sky-400'}`}>
+                    <Play className="w-5 h-5 fill-current" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold truncate">{previewVideo.title}</p>
+                    <p className="text-[11px] opacity-60">وضع الصوت فقط — التشغيل مستمر بدون صورة</p>
+                  </div>
+                </div>
+              )}
 
               {/* Queue navigation (shown whenever there is more than one video queued) */}
               {playerQueue.length > 1 && (

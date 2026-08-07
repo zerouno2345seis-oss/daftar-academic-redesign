@@ -1,8 +1,39 @@
 rules_version = '2';
+
+// قواعد أمان مقيّدة بحساب مالك التطبيق وحده.
+// ملاحظة: هذا الملف لا يُفعَّل تلقائيًا بمجرد رفع الكود — يجب نشره على Firebase،
+// إما عبر:  firebase deploy --only firestore:rules
+// أو بلصق محتواه في: لوحة Firebase ← Firestore Database ← Rules ← Publish
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ✏️ ضع بريدك الشخصي هنا (نفس البريد الذي تسجّل به الدخول عبر Google)
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email == 'zaheralnjjar@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    match /favorites/{docId} {
+      allow read, write: if isOwner();
+    }
+
+    match /favoriteFolders/{docId} {
+      allow read, write: if isOwner();
+    }
+
+    match /collections/{docId} {
+      allow read, write: if isOwner();
+    }
+
+    match /history/{docId} {
+      allow read, write: if isOwner();
+    }
+
+    // أي مسار آخر مرفوض افتراضيًا
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

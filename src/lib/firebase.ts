@@ -10,10 +10,30 @@ import {
   query,
   orderBy
 } from 'firebase/firestore';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut as fbSignOut,
+  onAuthStateChanged,
+  User
+} from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+
+export const auth = getAuth(app);
+
+export const signInWithGoogle = async () => {
+  const provider = new GoogleAuthProvider();
+  return signInWithPopup(auth, provider);
+};
+
+export const signOutUser = async () => fbSignOut(auth);
+
+export const watchAuthState = (cb: (user: User | null) => void) =>
+  onAuthStateChanged(auth, cb);
 
 // Use custom firestoreDatabaseId if configured
 export const db = getFirestore(
