@@ -3247,18 +3247,19 @@ export const YTLinkerOps: React.FC<Props> = ({
         </main>
 
         {/* Sticky Action Footer */}
-        <div className={`fixed bottom-0 ${lang === 'ar' ? 'left-0 right-64' : 'right-0 left-64'} border-t p-4 flex items-center justify-between z-20 backdrop-blur-md ${
+        <div className={`mobile-sticky-footer fixed bottom-0 ${lang === 'ar' ? 'left-0 right-64' : 'right-0 left-64'} border-t p-4 flex items-center justify-between z-20 backdrop-blur-md ${
           isLight ? 'bg-[#f7fbed]/90 border-[#c1c9b6]' : 'bg-[#0a0e1a]/90 border-white/10'
         }`}>
-          <div className="text-xs font-mono font-medium opacity-80 flex items-center gap-2">
+          <div className="mobile-footer-status text-xs font-mono font-medium opacity-80 flex items-center gap-2">
             <span className={`w-2.5 h-2.5 rounded-full ${selectedCount > 0 ? 'bg-sky-400 animate-pulse' : 'bg-gray-400'}`}></span>
             <span>{selectedCount} {t(lang, 'itemsSelected')}</span>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="mobile-footer-actions flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => handleExportMd()}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+              aria-label={t(lang, 'exportMd')}
+              className={`mobile-footer-action px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
                 isLight ? 'border-[#205100] text-[#205100] hover:bg-[#205100]/10' : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
               }`}
               title="تصدير المحدد أو الكل لملف MD Markdown"
@@ -3269,17 +3270,20 @@ export const YTLinkerOps: React.FC<Props> = ({
 
             <button
               onClick={handleCopyVideoIds}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+              aria-label="Copy Video IDs"
+              className={`mobile-footer-action px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
                 isLight ? 'border-[#205100] text-[#205100] hover:bg-[#205100]/10' : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
               }`}
               title="Copy raw Video IDs only"
             >
+              <Copy className="w-3.5 h-3.5" />
               <span>Copy Video IDs</span>
             </button>
 
             <button
               onClick={handleCopyAll}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-2 ${
+              aria-label={t(lang, 'copyAll')}
+              className={`mobile-footer-action px-4 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-2 ${
                 isLight ? 'border-[#205100] text-[#205100] hover:bg-[#205100]/10' : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
               }`}
             >
@@ -3289,7 +3293,8 @@ export const YTLinkerOps: React.FC<Props> = ({
 
             <button
               onClick={handleCopySelected}
-              className={`px-5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-2 ${
+              aria-label={t(lang, 'copySelected')}
+              className={`mobile-footer-action px-5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-2 ${
                 isLight ? 'bg-[#205100] text-white hover:bg-green-900' : 'bg-sky-500 text-slate-950 hover:bg-sky-400'
               }`}
             >
