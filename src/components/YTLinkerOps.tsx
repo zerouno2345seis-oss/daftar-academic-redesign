@@ -60,6 +60,44 @@ import {
 
 const SERVER_SEARCH_TIMEOUT_MS = 12_000;
 
+/**
+ * Copy a list of links as real line-separated plain text.
+ * CRLF is intentional here: a few mobile clipboard targets collapse bare LF
+ * into a single paragraph, while CRLF is consistently recognized as a line
+ * break by Android/iOS paste targets. Newlines inside an individual value are
+ * normalized so one malformed title/URL cannot join two links together.
+ */
+const copyLinesToClipboard = (values: readonly (string | null | undefined)[]): Promise<boolean> => {
+  const text = values
+    .map((value) => (typeof value === 'string' ? value.replace(/[\r\n]+/g, ' ').trim() : ''))
+    .filter(Boolean)
+    .join('\r\n');
+
+  if (!text) return Promise.resolve(false);
+
+  const fallbackCopy = () => {
+    if (typeof document === 'undefined') return false;
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '0';
+    textarea.style.left = '-9999px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    return copied;
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(fallbackCopy);
+  }
+  return Promise.resolve(fallbackCopy());
+};
+
 export interface CollectionFolder {
   id: string;
   name: string;
@@ -622,8 +660,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   };
 
   const handleCopyLevelLinks = (levelItems: SearchResultItem[], levelNum: number) => {
-    const urls = levelItems.map((item) => item.url).join('\n');
-    navigator.clipboard.writeText(urls);
+    void copyLinesToClipboard(levelItems.map((item) => item.url));
     showToast(
       lang === 'ar'
         ? `تم نسخ روابط المستوى ${levelNum} (${levelItems.length} فيديو) إلى الحافظة بنجاح!`
@@ -673,8 +710,7 @@ export const YTLinkerOps: React.FC<Props> = ({
     setShowNotebookLMModal(true);
 
     // Auto-copy raw URLs to clipboard for fast NotebookLM source adding
-    const rawUrls = slice299.map((i) => i.url).join('\n');
-    navigator.clipboard.writeText(rawUrls);
+    void copyLinesToClipboard(slice299.map((i) => i.url));
     showToast(
       lang === 'ar'
         ? `تم تجهيز ${slice299.length} فيديو ونسخ روابطها لـ NotebookLM!`
@@ -685,8 +721,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   const handleCopyNotebookLMText = (format: 'urls' | 'markdown') => {
     if (notebookLMItems.length === 0) return;
     if (format === 'urls') {
-      const urls = notebookLMItems.map((i) => i.url).join('\n');
-      navigator.clipboard.writeText(urls);
+      void copyLinesToClipboard(notebookLMItems.map((i) => i.url));
       showToast(lang === 'ar' ? `تم نسخ ${notebookLMItems.length} رابط يوتيوب لـ NotebookLM!` : `Copied ${notebookLMItems.length} raw URLs!`);
     } else {
       let md = `# 📘 ${notebookLMTitle} (${notebookLMItems.length} مصدر فيديو)\n\n`;
@@ -1272,14 +1307,14 @@ export const YTLinkerOps: React.FC<Props> = ({
   };
 
   const handleCopySelected = () => {
-    const selectedUrls = items.filter((i) => i.selected).map((i) => i.url).join('\n');
-    if (!selectedUrls) {
+    const selectedItems = items.filter((i) => i.selected);
+    if (selectedItems.length === 0) {
       showToast(lang === 'ar' ? 'الرجاء تحديد فيديو واحد على الأقل أولاً!' : 'Please select at least one video first!');
       return;
     }
-    navigator.clipboard.writeText(selectedUrls);
+    void copyLinesToClipboard(selectedItems.map((item) => item.url));
     showToast(t(lang, 'copiedSuccess'));
-    setHistoryLogs((prev) => [`Copied ${items.filter(i => i.selected).length} selected YouTube URLs`, ...prev]);
+    setHistoryLogs((prev) => [`Copied ${selectedItems.length} selected YouTube URLs`, ...prev]);
   };
 
   const handleCopyAll = () => {
@@ -1287,8 +1322,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       showToast(lang === 'ar' ? 'لا توجد نتائج لنسخها' : 'No results to copy');
       return;
     }
-    const allUrls = items.map((i) => i.url).join('\n');
-    navigator.clipboard.writeText(allUrls);
+    void copyLinesToClipboard(items.map((item) => item.url));
     showToast(t(lang, 'copiedSuccess'));
     setHistoryLogs((prev) => [`Copied all ${items.length} YouTube URLs to clipboard`, ...prev]);
   };
@@ -1298,9 +1332,13 @@ export const YTLinkerOps: React.FC<Props> = ({
       showToast(lang === 'ar' ? 'لا توجد فيديوهات لنسخها' : 'No channel videos to copy');
       return;
     }
-    const selectedUrls = channelVideos.filter((v) => v.selected).map((v) => v.url).join('\n');
-    navigator.clipboard.writeText(selectedUrls);
-    showToast(lang === 'ar' ? `تم نسخ ${channelVideos.filter(v => v.selected).length} رابط فيديو من القناة!` : 'Copied channel video URLs!');
+    const selectedVideos = channelVideos.filter((video) => video.selected);
+    if (selectedVideos.length === 0) {
+      showToast(lang === 'ar' ? 'الرجاء تحديد فيديو واحد على الأقل أولاً!' : 'Please select at least one video first!');
+      return;
+    }
+    void copyLinesToClipboard(selectedVideos.map((video) => video.url));
+    showToast(lang === 'ar' ? `تم نسخ ${selectedVideos.length} رابط فيديو من القناة!` : 'Copied channel video URLs!');
   };
 
   const handleCopyVideoIds = () => {
@@ -1309,14 +1347,13 @@ export const YTLinkerOps: React.FC<Props> = ({
       .map((i) => {
         const match = i.url.match(/v=([^&]+)/);
         return match ? match[1] : i.url;
-      })
-      .join('\n');
+      });
 
-    if (!ids) {
+    if (ids.length === 0) {
       showToast(lang === 'ar' ? 'الرجاء تحديد فيديوهات أولاً' : 'Select videos to copy IDs');
       return;
     }
-    navigator.clipboard.writeText(ids);
+    void copyLinesToClipboard(ids);
     showToast(lang === 'ar' ? 'تم نسخ معرفات الفيديوهات (Video IDs)!' : 'Copied Video IDs to clipboard!');
   };
 
@@ -4296,8 +4333,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                     onClick={() => {
                       const activeVids = playlistVideos.filter((v) => v.selected);
                       const target = activeVids.length > 0 ? activeVids : playlistVideos;
-                      const urls = target.map((v) => v.url).join('\n');
-                      navigator.clipboard.writeText(urls);
+                      void copyLinesToClipboard(target.map((video) => video.url));
                       showToast(lang === 'ar' ? `تم نسخ ${target.length} رابط إلى الحافظة!` : `Copied ${target.length} links!`);
                     }}
                     className={`px-5 py-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
