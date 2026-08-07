@@ -252,6 +252,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   type ViewMode = 'grid' | 'list';
   const [videoViewMode, setVideoViewMode] = useState<ViewMode>('grid');
   const [channelViewMode, setChannelViewMode] = useState<ViewMode>('grid');
+  const [mobileVideoOptionsOpen, setMobileVideoOptionsOpen] = useState(false);
 
   // Helper functions for sorting & parsing
   const parseViewsNumber = (viewsStr?: string): number => {
@@ -1849,6 +1850,141 @@ export const YTLinkerOps: React.FC<Props> = ({
                       </span>
                     </h3>
 
+                    <div className="mobile-video-options">
+                      <button
+                        type="button"
+                        className="mobile-options-trigger"
+                        onClick={() => setMobileVideoOptionsOpen((open) => !open)}
+                        aria-expanded={mobileVideoOptionsOpen}
+                        aria-controls="mobile-video-options-panel"
+                      >
+                        <Filter className="w-4 h-4" />
+                        <span>{mobileVideoOptionsOpen ? 'إخفاء الخيارات' : 'خيارات العرض والإجراءات'}</span>
+                        {mobileVideoOptionsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+
+                      {mobileVideoOptionsOpen && (
+                        <div id="mobile-video-options-panel" className="mobile-options-panel">
+                          <label className="mobile-options-sort">
+                            <ArrowUpDown className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                            <span>ترتيب الفيديوهات</span>
+                            <select
+                              value={videoSortOption}
+                              onChange={(e) => setVideoSortOption(e.target.value as VideoSortOption)}
+                              className="bg-transparent font-semibold text-xs border-none outline-none focus:ring-0 cursor-pointer text-sky-400 dark:text-sky-300"
+                            >
+                              <option value="default" className="bg-slate-900 text-white">الافتراضي (حسب الصلة)</option>
+                              <option value="views_desc" className="bg-slate-900 text-white">🔥 الأكثر مشاهدة</option>
+                              <option value="date_desc" className="bg-slate-900 text-white">📅 الأحدث تاريخاً</option>
+                              <option value="date_asc" className="bg-slate-900 text-white">⏳ الأقدم تاريخاً</option>
+                              <option value="color" className="bg-slate-900 text-white">🎨 حسب اللون (التصنيف)</option>
+                            </select>
+                          </label>
+
+                          <div className="mobile-options-view" aria-label="طريقة عرض الفيديوهات">
+                            <button
+                              type="button"
+                              onClick={() => setVideoViewMode('grid')}
+                              className={videoViewMode === 'grid' ? 'is-active' : ''}
+                              title="عرض شبكي بأيقونات"
+                              aria-label="عرض شبكي بأيقونات"
+                            >
+                              <Layers className="w-4 h-4" />
+                              <span>شبكي</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setVideoViewMode('list')}
+                              className={videoViewMode === 'list' ? 'is-active' : ''}
+                              title="عرض قائمة"
+                              aria-label="عرض قائمة"
+                            >
+                              <List className="w-4 h-4" />
+                              <span>قائمة</span>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="mobile-options-action"
+                            onClick={() => {
+                              const activeVids = items.filter((i) => i.selected);
+                              openChunkerModal(activeVids.length > 0 ? activeVids : items, lang === 'ar' ? 'نتائج البحث الرئيسي' : 'Main Search Results');
+                              setMobileVideoOptionsOpen(false);
+                            }}
+                            title="تقسيم النتائج إلى مستويات بحجم 299 فيديو كحد أقصى للنسخ والنقل للدفاتر"
+                          >
+                            <ListOrdered className="w-4 h-4" />
+                            <span>تقسيم 299</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="mobile-options-action"
+                            onClick={() => {
+                              const activeVids = items.filter((i) => i.selected);
+                              const target = activeVids.length > 0 ? activeVids : items;
+                              handleOpenNotebookLMModal(target, query ? `بحث: ${query}` : 'نتائج البحث الرئيسي');
+                              setMobileVideoOptionsOpen(false);
+                            }}
+                            title="إنشاء دفتر مصادر جديد مباشرة في Google NotebookLM (299 فيديو max)"
+                          >
+                            <BookOpen className="w-4 h-4" />
+                            <span>دفتر NotebookLM</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="mobile-options-action"
+                            onClick={() => {
+                              handleOpenSaveFolderModal();
+                              setMobileVideoOptionsOpen(false);
+                            }}
+                            title={t(lang, 'saveToFolder')}
+                          >
+                            <FolderPlus className="w-4 h-4" />
+                            <span>{t(lang, 'saveToFolder')}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="mobile-options-action"
+                            onClick={() => {
+                              handleExportMd();
+                              setMobileVideoOptionsOpen(false);
+                            }}
+                            title={t(lang, 'exportMd')}
+                          >
+                            <FileText className="w-4 h-4" />
+                            <span>{t(lang, 'exportMd')}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="mobile-options-action"
+                            onClick={() => {
+                              handleExportTxt();
+                              setMobileVideoOptionsOpen(false);
+                            }}
+                            title={t(lang, 'exportTxt')}
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>{t(lang, 'exportTxt')}</span>
+                          </button>
+
+                          <label className="mobile-options-select-all">
+                            <input
+                              type="checkbox"
+                              checked={isAllSelected}
+                              onChange={(e) => handleSelectAll(e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-400 text-sky-500 focus:ring-sky-500 cursor-pointer"
+                            />
+                            <span>{t(lang, 'selectAll')}</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="mobile-toolbar flex items-center gap-3 text-xs flex-wrap">
                       {/* Video Sort Dropdown */}
                       <div className="mobile-sort flex items-center gap-1.5 bg-black/10 dark:bg-white/5 border border-black/10 dark:border-white/10 px-2.5 py-1 rounded-lg">
@@ -1868,7 +2004,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                       </div>
 
                       {/* Video View Mode Toggle: Grid of icons / List */}
-                      <div className="flex items-center gap-1 bg-black/10 dark:bg-white/5 border border-black/10 dark:border-white/10 p-0.5 rounded-lg">
+                      <div className="mobile-view-toggle flex items-center gap-1 bg-black/10 dark:bg-white/5 border border-black/10 dark:border-white/10 p-0.5 rounded-lg">
                         <button
                           type="button"
                           onClick={() => setVideoViewMode('grid')}
@@ -1900,7 +2036,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                           const activeVids = items.filter((i) => i.selected);
                           openChunkerModal(activeVids.length > 0 ? activeVids : items, lang === 'ar' ? 'نتائج البحث الرئيسي' : 'Main Search Results');
                         }}
-                        className="hover:underline font-bold flex items-center gap-1.5 text-sky-400 hover:text-sky-300 bg-sky-500/10 border border-sky-500/30 px-3 py-1 rounded-lg"
+                        className="mobile-action-button mobile-action-split hover:underline font-bold flex items-center gap-1.5 text-sky-400 hover:text-sky-300 bg-sky-500/10 border border-sky-500/30 px-3 py-1 rounded-lg"
                         title="تقسيم النتائج إلى مستويات بحجم 299 فيديو كحد أقصى للنسخ والنقل للدفاتر"
                       >
                         <ListOrdered className="w-4 h-4 text-sky-400" />
@@ -1913,7 +2049,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                           const target = activeVids.length > 0 ? activeVids : items;
                           handleOpenNotebookLMModal(target, query ? `بحث: ${query}` : 'نتائج البحث الرئيسي');
                         }}
-                        className="hover:underline font-bold flex items-center gap-1.5 text-sky-400 hover:text-sky-300 bg-sky-500/10 border border-sky-500/30 px-3 py-1 rounded-lg transition-all"
+                        className="mobile-action-button mobile-action-notebook hover:underline font-bold flex items-center gap-1.5 text-sky-400 hover:text-sky-300 bg-sky-500/10 border border-sky-500/30 px-3 py-1 rounded-lg transition-all"
                         title="إنشاء دفتر مصادر جديد مباشرة في Google NotebookLM (299 فيديو max)"
                       >
                         <BookOpen className="w-4 h-4 text-sky-400" />
@@ -1922,7 +2058,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
                       <button
                         onClick={() => handleOpenSaveFolderModal()}
-                        className="hover:underline font-semibold flex items-center gap-1.5 opacity-80 hover:opacity-100 text-sky-400"
+                        className="mobile-action-button mobile-action-save hover:underline font-semibold flex items-center gap-1.5 opacity-80 hover:opacity-100 text-sky-400"
                         title="حفظ نتائج البحث أو المحدد في مجلد خاص بالمجموعات"
                       >
                         <FolderPlus className="w-3.5 h-3.5 text-sky-400" />
@@ -1931,7 +2067,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
                       <button
                         onClick={() => handleExportMd()}
-                        className="hover:underline font-semibold flex items-center gap-1.5 opacity-80 hover:opacity-100 text-sky-400"
+                        className="mobile-action-button mobile-action-md hover:underline font-semibold flex items-center gap-1.5 opacity-80 hover:opacity-100 text-sky-400"
                         title="تصدير المحدد أو الكل إلى ملف Markdown"
                       >
                         <FileText className="w-3.5 h-3.5 text-sky-400" />
@@ -1940,14 +2076,14 @@ export const YTLinkerOps: React.FC<Props> = ({
 
                       <button
                         onClick={() => handleExportTxt()}
-                        className="hover:underline font-semibold flex items-center gap-1.5 opacity-80 hover:opacity-100 text-sky-400"
+                        className="mobile-action-button mobile-action-txt hover:underline font-semibold flex items-center gap-1.5 opacity-80 hover:opacity-100 text-sky-400"
                         title="تصدير المحدد أو الكل إلى ملف TXT"
                       >
                         <Download className="w-3.5 h-3.5 text-sky-400" />
                         <span>{t(lang, 'exportTxt')}</span>
                       </button>
 
-                      <label className="flex items-center gap-2 font-semibold cursor-pointer">
+                      <label className="mobile-select-all flex items-center gap-2 font-semibold cursor-pointer" title={t(lang, 'selectAll')}>
                         <input
                           type="checkbox"
                           checked={isAllSelected}
