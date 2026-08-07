@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "favorites": {
+      "title": "Favorites",
+      "description": "User favorite videos, channels, and playlists",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["video", "channel", "playlist"] },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "channelTitle": { "type": "string" },
+        "views": { "type": "string" },
+        "publishedAt": { "type": "string" },
+        "colorTag": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "type", "title", "url"]
+    },
+    "collections": {
+      "title": "Collection Folders",
+      "description": "User-defined folders for organizing video links and channels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "items": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "history": {
+      "title": "Search History",
+      "description": "User recent search history queries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "query": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "query"]
+    }
+  }
+}

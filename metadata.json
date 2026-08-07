@@ -1,0 +1,6 @@
+{
+  "name": "يوتيوب أكاديمي",
+  "description": "أداة بحث وأرشفة فيديوهات وقنوات يوتيوب للاستخدام الأكاديمي، مع تجهيز المصادر لـ Google NotebookLM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
