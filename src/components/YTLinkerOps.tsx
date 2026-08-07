@@ -1548,7 +1548,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       )}
 
       {/* Sidebar Navigation */}
-      <nav className={`w-64 border-r flex flex-col py-6 px-4 fixed h-full z-30 overflow-y-auto transition-transform duration-200 ${
+      <nav className={`mobile-sidebar w-64 border-r flex flex-col py-6 px-4 fixed h-full z-30 overflow-y-auto transition-transform duration-200 ${
         sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
       } ${
         isLight ? 'bg-[#d7dccf] border-[#c1c9b6] text-[#205100]' : 'bg-[#141c2e] border-white/10 text-sky-400'
@@ -1692,7 +1692,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       </nav>
 
       {/* Main Content Area */}
-      <div className={`flex-1 min-w-0 ${lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'} flex flex-col min-h-screen pb-24`}>
+      <div className={`flex-1 min-w-0 overflow-x-hidden ${lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'} flex flex-col min-h-screen pb-24`}>
         {/* Header Bar */}
         <header className={`min-h-16 border-b px-4 sm:px-8 py-2 flex items-center justify-between gap-2 sticky top-0 z-10 backdrop-blur-md ${
           isLight ? 'bg-[#f7fbed]/80 border-[#c1c9b6]' : 'bg-[#0a0e1a]/80 border-white/10'
@@ -1745,11 +1745,11 @@ export const YTLinkerOps: React.FC<Props> = ({
         </header>
 
         {/* Canvas Body */}
-        <main className="p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 min-w-0">
+        <main className="mobile-main p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 min-w-0">
           {activeTab === 'search' && (
             <>
               {/* Target Query Search Box */}
-              <div className={`p-6 rounded-xl border ${
+              <div className={`mobile-search-card p-6 rounded-xl border ${
                 isLight ? 'bg-white border-[#c1c9b6] shadow-sm' : 'glass-card'
               }`}>
                 <form onSubmit={handleExecuteSearch} className="flex flex-col md:flex-row gap-4 items-end">
@@ -1799,7 +1799,7 @@ export const YTLinkerOps: React.FC<Props> = ({
               </div>
 
               {/* View Section Filters (All / Videos / Channels) */}
-              <div className="flex items-center gap-3 border-b border-black/10 dark:border-white/10 pb-3">
+              <div className="mobile-section-tabs flex items-center gap-3 border-b border-black/10 dark:border-white/10 pb-3">
                 <button
                   onClick={() => setSearchSection('all')}
                   className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
@@ -1840,7 +1840,7 @@ export const YTLinkerOps: React.FC<Props> = ({
               {/* SECTION 1: VIDEOS */}
               {(searchSection === 'all' || searchSection === 'videos') && (
                 <div className="space-y-4 pt-2">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
+                  <div className="mobile-section-heading flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
                     <h3 className="font-bold text-base flex items-center gap-2">
                       <Film className="w-5 h-5 text-red-500" />
                       <span>{t(lang, 'videosSection')}</span>
@@ -1849,9 +1849,9 @@ export const YTLinkerOps: React.FC<Props> = ({
                       </span>
                     </h3>
 
-                    <div className="flex items-center gap-3 text-xs flex-wrap">
+                    <div className="mobile-toolbar flex items-center gap-3 text-xs flex-wrap">
                       {/* Video Sort Dropdown */}
-                      <div className="flex items-center gap-1.5 bg-black/10 dark:bg-white/5 border border-black/10 dark:border-white/10 px-2.5 py-1 rounded-lg">
+                      <div className="mobile-sort flex items-center gap-1.5 bg-black/10 dark:bg-white/5 border border-black/10 dark:border-white/10 px-2.5 py-1 rounded-lg">
                         <ArrowUpDown className="w-3.5 h-3.5 text-sky-400" />
                         <span className="font-bold opacity-80 text-[11px]">ترتيب الفيديوهات:</span>
                         <select
@@ -1961,7 +1961,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
                   {/* Loading State / Video Grid */}
                   {loading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div className="mobile-results-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {Array.from({ length: 8 }).map((_, idx) => (
                         <div key={idx} className={`rounded-xl border p-3 space-y-3 animate-pulse ${
                           isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'
@@ -1973,10 +1973,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                       ))}
                     </div>
                   ) : (
-                    <div className={videoViewMode === 'grid'
+                    <div className={`mobile-results-grid ${videoViewMode === 'grid'
                       ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'
                       : 'flex flex-col gap-2'
-                    }>
+                    }`}>
                       {items.length === 0 ? (
                         <div className="col-span-full py-10 text-center opacity-70 text-sm">
                           {t(lang, 'noResults')}
@@ -1997,7 +1997,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                           <div
                             key={item.id}
                             onClick={() => handleToggleSelect(item.id)}
-                            className={`group rounded-xl overflow-hidden border transition-all cursor-pointer relative flex ${
+                            className={`mobile-video-card group rounded-xl overflow-hidden border transition-all cursor-pointer relative flex ${
                               videoViewMode === 'grid' ? 'flex-col justify-between' : 'flex-row items-center'
                             } ${
                               activeColorBorder
@@ -2023,7 +2023,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                             {/* Color Tag Picker & Delete button overlay top-right */}
                             <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
                               {/* Quick Color Tag Palette */}
-                              <div className="flex items-center gap-1 bg-black/75 px-2 py-1 rounded-full backdrop-blur-md border border-white/10 shadow-lg">
+                              <div className="mobile-color-picker flex items-center gap-1 bg-black/75 px-2 py-1 rounded-full backdrop-blur-md border border-white/10 shadow-lg">
                                 {(['red', 'blue', 'green', 'yellow', 'purple'] as ColorTag[]).map((c) => {
                                   const colorClasses: Record<ColorTag, string> = {
                                     red: 'bg-rose-500',
@@ -2077,7 +2077,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                                   e.stopPropagation();
                                   handleDeleteItem(item.id);
                                 }}
-                                className="p-1.5 rounded-full bg-black/60 text-white hover:bg-rose-600 transition-colors opacity-0 group-hover:opacity-100"
+                                className="mobile-delete-action p-1.5 rounded-full bg-black/60 text-white hover:bg-rose-600 transition-colors opacity-0 group-hover:opacity-100"
                                 title="إزالة من القائمة"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -2085,10 +2085,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                             </div>
 
                             {/* Thumbnail Container */}
-                            <div className={videoViewMode === 'grid'
+                            <div className={`mobile-video-thumb ${videoViewMode === 'grid'
                               ? 'aspect-video relative bg-slate-900 overflow-hidden group/thumb'
                               : 'w-32 h-20 flex-shrink-0 relative bg-slate-900 overflow-hidden group/thumb rounded-lg m-2'
-                            }>
+                            }`}>
                               <img
                                 src={item.thumbnail}
                                 alt={item.thumbnailAlt}
@@ -2116,10 +2116,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                             </div>
 
                             {/* Details */}
-                            <div className={videoViewMode === 'grid'
+                            <div className={`mobile-video-details ${videoViewMode === 'grid'
                               ? 'p-3.5 flex-1 flex flex-col justify-between'
                               : 'py-2 pl-3 pr-1 flex-1 min-w-0 flex flex-col justify-center gap-1'
-                            }>
+                            }`}>
                               <div>
                                 <h4 className="font-semibold text-xs line-clamp-2 leading-snug mb-1.5">
                                   {item.title}
@@ -2143,14 +2143,14 @@ export const YTLinkerOps: React.FC<Props> = ({
                                     </button>
                                   )}
 
-                                  <div className="flex items-center gap-2 text-[10px] opacity-70 font-mono">
+                                  <div className="mobile-video-stats flex items-center gap-2 text-[10px] opacity-70 font-mono">
                                     {item.views && <span>👀 {item.views}</span>}
                                     {item.publishedAt && <span>📅 {item.publishedAt}</span>}
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between">
+                              <div className="mobile-video-actions pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between">
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -2165,7 +2165,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                                 </button>
 
                                 <div className="flex items-center gap-2">
-                                  <p className="font-mono text-[10px] opacity-60 truncate max-w-[120px]">
+                                  <p className="mobile-video-url font-mono text-[10px] opacity-60 truncate max-w-[120px]">
                                     {item.url}
                                   </p>
                                   <a
@@ -2226,7 +2226,7 @@ export const YTLinkerOps: React.FC<Props> = ({
               {/* SECTION 2: CHANNELS */}
               {(searchSection === 'all' || searchSection === 'channels') && (
                 <div className="space-y-4 pt-6 border-t border-black/10 dark:border-white/10">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="mobile-section-heading flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <h3 className="font-bold text-base flex items-center gap-2">
                       <Users className="w-5 h-5 text-sky-400" />
                       <span>{t(lang, 'channelsSection')}</span>
@@ -2286,10 +2286,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                       <p className="text-sm font-semibold">لم يتم العثور على قنوات بهذا الاسم محددًا</p>
                     </div>
                   ) : (
-                    <div className={channelViewMode === 'grid'
+                    <div className={`mobile-results-grid ${channelViewMode === 'grid'
                       ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
                       : 'flex flex-col gap-2'
-                    }>
+                    }`}>
                       {getSortedChannels(channels, channelSortOption).map((channel) => {
                         const colorBorders: Record<ColorTag, string> = {
                           red: 'border-rose-500 ring-2 ring-rose-500/40 shadow-rose-500/20',
@@ -2305,7 +2305,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                         <div
                           key={channel.id}
                           onClick={() => handleOpenChannelModal(channel)}
-                          className={`p-4 rounded-xl border transition-all cursor-pointer group hover:shadow-lg relative flex ${
+                          className={`mobile-channel-card p-4 rounded-xl border transition-all cursor-pointer group hover:shadow-lg relative flex ${
                             channelViewMode === 'grid' ? 'flex-col justify-between' : 'flex-row items-center gap-3'
                           } ${
                             activeColorBorder
@@ -2314,7 +2314,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                           }`}
                         >
                           {/* Channel Color Tag Dots & Favorite Star */}
-                          <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5">
+                          <div className="mobile-channel-colors absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5">
                             <div className="flex items-center gap-1 bg-black/75 px-2 py-0.5 rounded-full backdrop-blur-md border border-white/10">
                               {(['red', 'blue', 'green', 'yellow', 'purple'] as ColorTag[]).map((c) => {
                                 const colorClasses: Record<ColorTag, string> = {
@@ -2364,11 +2364,11 @@ export const YTLinkerOps: React.FC<Props> = ({
                             })()}
                           </div>
 
-                          <div className={`flex items-start gap-3 min-w-0 ${channelViewMode === 'grid' ? 'mb-3 pt-2' : 'flex-1 items-center'}`}>
+                          <div className={`mobile-channel-info flex items-start gap-3 min-w-0 ${channelViewMode === 'grid' ? 'mb-3 pt-2' : 'flex-1 items-center'}`}>
                             <img
                               src={channel.avatar}
                               alt={channel.name}
-                              className={`rounded-full object-cover border border-white/20 flex-shrink-0 group-hover:border-sky-400 transition-colors ${
+                              className={`mobile-channel-avatar rounded-full object-cover border border-white/20 flex-shrink-0 group-hover:border-sky-400 transition-colors ${
                                 channelViewMode === 'grid' ? 'w-12 h-12' : 'w-9 h-9'
                               }`}
                             />
@@ -2383,10 +2383,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                             </div>
                           </div>
 
-                          <div className={channelViewMode === 'grid'
+                          <div className={`mobile-channel-actions ${channelViewMode === 'grid'
                             ? 'pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-2'
                             : 'flex-shrink-0 flex items-center gap-2'
-                          }>
+                          }`}>
                             <a
                               href={channel.url}
                               target="_blank"
@@ -2423,7 +2423,7 @@ export const YTLinkerOps: React.FC<Props> = ({
               )}
 
               {/* Format Hint Banner */}
-              <div className={`p-4 rounded-xl border flex items-start gap-3 ${
+              <div className={`mobile-format-banner p-4 rounded-xl border flex items-start gap-3 ${
                 isLight ? 'bg-[#ebf0e2] border-[#c1c9b6]' : 'bg-[#141c2e] border-white/10'
               }`}>
                 <Info className="w-5 h-5 text-sky-500 mt-0.5 flex-shrink-0" />

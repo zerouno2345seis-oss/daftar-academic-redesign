@@ -88,3 +88,183 @@
 .light ::-webkit-scrollbar-thumb:hover {
   background: #74777f;
 }
+
+/* Mobile reading layout: keep the dense research surface usable on narrow phones. */
+@media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    overflow-x: hidden;
+  }
+
+  .mobile-sidebar {
+    width: min(18rem, calc(100vw - 1rem));
+  }
+
+  .mobile-main {
+    padding: 0.75rem;
+  }
+
+  .mobile-search-card {
+    padding: 0.85rem;
+    border-radius: 0.875rem;
+  }
+
+  .mobile-search-card form {
+    gap: 0.65rem;
+  }
+
+  .mobile-search-card button[type='submit'] {
+    width: 100%;
+    min-height: 2.75rem;
+    justify-content: center;
+    font-size: 0.75rem;
+  }
+
+  .mobile-section-tabs {
+    gap: 0.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .mobile-section-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-section-tabs > button {
+    flex: 1 0 auto;
+    min-width: 5.25rem;
+    justify-content: center;
+    padding: 0.65rem 0.7rem;
+    white-space: nowrap;
+  }
+
+  .mobile-section-heading {
+    align-items: flex-start;
+  }
+
+  .mobile-toolbar {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .mobile-toolbar > * {
+    min-width: 0;
+  }
+
+  .mobile-toolbar .mobile-sort {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 2.25rem;
+    justify-content: space-between;
+  }
+
+  .mobile-toolbar .mobile-sort select {
+    min-width: 0;
+    max-width: 11rem;
+    flex: 1;
+  }
+
+  .mobile-toolbar > button,
+  .mobile-toolbar > label,
+  .mobile-toolbar > div:not(.mobile-sort) {
+    min-height: 2.2rem;
+    justify-content: center;
+    padding-inline: 0.55rem;
+  }
+
+  .mobile-toolbar > button span,
+  .mobile-toolbar > label span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-results-grid {
+    gap: 0.75rem;
+  }
+
+  .mobile-video-card {
+    display: grid;
+    grid-template-columns: minmax(7.2rem, 38%) minmax(0, 1fr);
+    min-height: 7rem;
+  }
+
+  .mobile-video-card .mobile-video-thumb {
+    width: 100%;
+    height: 100%;
+    min-height: 7rem;
+    aspect-ratio: auto;
+  }
+
+  .mobile-video-card .mobile-video-details {
+    min-width: 0;
+    padding: 0.75rem;
+  }
+
+  .mobile-video-card .mobile-video-details h4 {
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  .mobile-video-card .mobile-video-stats {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-size: 0.64rem;
+  }
+
+  .mobile-video-card .mobile-video-url,
+  .mobile-video-card .mobile-color-picker,
+  .mobile-video-card .mobile-delete-action {
+    display: none;
+  }
+
+  .mobile-video-card .mobile-video-actions {
+    gap: 0.25rem;
+    padding-top: 0.4rem;
+  }
+
+  .mobile-video-card .mobile-video-actions button {
+    padding: 0.35rem 0.45rem;
+    font-size: 0.68rem;
+  }
+
+  .mobile-channel-card {
+    display: grid;
+    grid-template-columns: 2.8rem minmax(0, 1fr);
+    gap: 0.65rem;
+    padding: 0.75rem;
+  }
+
+  .mobile-channel-card .mobile-channel-info {
+    margin: 0;
+    padding: 0.2rem 0 0;
+  }
+
+  .mobile-channel-card .mobile-channel-avatar {
+    width: 2.65rem;
+    height: 2.65rem;
+  }
+
+  .mobile-channel-card .mobile-channel-actions {
+    grid-column: 1 / -1;
+    padding-top: 0.6rem;
+  }
+
+  .mobile-channel-card .mobile-channel-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .mobile-channel-card .mobile-channel-colors {
+    display: none;
+  }
+
+  .mobile-format-banner {
+    padding: 0.8rem;
+    font-size: 0.72rem;
+  }
+}
