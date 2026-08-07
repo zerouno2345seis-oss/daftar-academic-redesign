@@ -845,7 +845,8 @@ export const YTLinkerOps: React.FC<Props> = ({
   useEffect(() => {
     const standaloneMedia = window.matchMedia('(display-mode: standalone)');
     const isStandalone = standaloneMedia.matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
     setPwaInstalled(isStandalone);
     setIsIosDevice(isIos);
