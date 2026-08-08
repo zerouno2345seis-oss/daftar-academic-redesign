@@ -77,8 +77,26 @@ const createStableSharedId = (value: string) => {
 };
 
 const extractSharedUrl = (value: string) => {
-  const match = value.match(/https?:\/\/[^\s<>"']+/i);
-  return match?.[0].replace(/[),.;!?]+$/, '') || '';
+  const match = value.match(/(?:https?:\/\/|www\.)[^\s<>"']+/i);
+  const candidate = match?.[0].replace(/[),.;!?]+$/, '') || '';
+  return candidate.startsWith('www.') ? `https://${candidate}` : candidate;
+};
+
+const normalizeSharedUrl = (value: string) => {
+  const candidate = value.trim();
+  const withProtocol = /^www\./i.test(candidate) ? `https://${candidate}` : candidate;
+  try {
+    const parsed = new URL(withProtocol);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+};
+
+const upsertFavoriteVideo = (videos: SearchResultItem[], item: SearchResultItem) => {
+  const existingIndex = videos.findIndex((video) => video.id === item.id || video.url === item.url);
+  if (existingIndex < 0) return [item, ...videos];
+  return videos.map((video, index) => index === existingIndex ? { ...video, ...item } : video);
 };
 
 const getSharedUrlHost = (value: string) => {
@@ -956,8 +974,8 @@ export const YTLinkerOps: React.FC<Props> = ({
     const params = new URLSearchParams(window.location.search);
     const rawUrl = (params.get('url') || '').trim();
     const sharedText = (params.get('text') || '').trim();
-    const sharedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : extractSharedUrl(sharedText);
-    if (!sharedUrl || !/^https?:\/\//i.test(sharedUrl)) return;
+    const sharedUrl = normalizeSharedUrl(rawUrl) || normalizeSharedUrl(extractSharedUrl(sharedText));
+    if (!sharedUrl) return;
 
     sharedLinkHandledRef.current = true;
     const title = (params.get('title') || '').trim() || getSharedUrlHost(sharedUrl);
@@ -976,7 +994,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
     const alreadySaved = favoriteVideos.some((video) => video.url === sharedUrl || video.id === sharedItem.id);
     if (!alreadySaved) {
-      setFavoriteVideos((prev) => [sharedItem, ...prev]);
+      setFavoriteVideos((prev) => upsertFavoriteVideo(prev, sharedItem));
       saveFavoriteToFirestore(sharedItem, 'video');
       showToast('تمت إضافة الرابط المشترك إلى المفضلة ⭐');
     } else {
@@ -999,9 +1017,10 @@ export const YTLinkerOps: React.FC<Props> = ({
           thumbnailAlt: preview.title || sharedItem.thumbnailAlt,
           description: preview.description
         };
-        setFavoriteVideos((prev) => prev.map((video) => (
-          video.id === sharedItem.id || video.url === sharedUrl ? { ...video, ...updatedItem } : video
-        )));
+        // Upsert instead of only mapping existing rows. A Firestore snapshot
+        // can arrive between the initial save and this request, replacing the
+        // local list before the preview response returns.
+        setFavoriteVideos((prev) => upsertFavoriteVideo(prev, updatedItem));
         saveFavoriteToFirestore(updatedItem, 'video');
       })
       .catch(() => {
