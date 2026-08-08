@@ -36,6 +36,7 @@ import {
   Eye,
   FolderPlus,
   Folder,
+  Home,
   ChevronDown,
   ChevronUp,
   X,
@@ -296,6 +297,32 @@ export const YTLinkerOps: React.FC<Props> = ({
   const [videoViewMode, setVideoViewMode] = useState<ViewMode>('grid');
   const [channelViewMode, setChannelViewMode] = useState<ViewMode>('grid');
   const [mobileVideoOptionsOpen, setMobileVideoOptionsOpen] = useState(false);
+  const [mobileQuickNavExpanded, setMobileQuickNavExpanded] = useState(false);
+
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches
+  );
+
+  useEffect(() => {
+    const desktopMedia = window.matchMedia('(min-width: 1024px) and (pointer: fine)');
+    const updateDesktopViewport = () => setIsDesktopViewport(desktopMedia.matches);
+    updateDesktopViewport();
+    desktopMedia.addEventListener?.('change', updateDesktopViewport);
+    return () => desktopMedia.removeEventListener?.('change', updateDesktopViewport);
+  }, []);
+
+  const handleGoHome = () => {
+    setActiveTab('search');
+    setSearchSection('all');
+    setSidebarOpen(false);
+    setMobileVideoOptionsOpen(false);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  };
+
+  const handleSelectTab = (tab: 'search' | 'collections' | 'favorites' | 'history' | 'settings') => {
+    setActiveTab(tab);
+    setSidebarOpen(false);
+  };
 
   // Helper functions for sorting & parsing
   const parseViewsNumber = (viewsStr?: string): number => {
@@ -471,6 +498,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   };
 
   const handleTogglePictureInPicture = async () => {
+    if (!isDesktopViewport) return;
     const w: any = window;
     if (!('documentPictureInPicture' in w)) {
       // Not supported (Safari / Firefox) — fall back to the in-page docked mini player.
@@ -1629,29 +1657,12 @@ export const YTLinkerOps: React.FC<Props> = ({
     <div className={`min-h-screen flex w-full transition-colors ${
       isLight ? 'bg-[#f7fbed] text-[#181d15]' : 'bg-[#0a0e1a] text-[#e0e8f0]'
     }`}>
-      {/* خلفية معتمة خلف الشريط الجانبي على الشاشات الصغيرة */}
-      {sidebarOpen && (
-        <div
-          onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-black/60 z-20 lg:hidden"
-        />
-      )}
-
       {/* Sidebar Navigation */}
       <nav className={`mobile-sidebar w-64 border-r flex flex-col py-6 px-4 fixed h-full z-30 overflow-y-auto transition-transform duration-200 ${
         sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
       } ${
         isLight ? 'bg-[#d7dccf] border-[#c1c9b6] text-[#205100]' : 'bg-[#141c2e] border-white/10 text-sky-400'
       }`}>
-        {/* زر إغلاق الشريط الجانبي (شاشات صغيرة فقط) */}
-        <button
-          onClick={() => setSidebarOpen(false)}
-          className="lg:hidden absolute top-3 left-3 p-1.5 rounded-lg opacity-70 hover:opacity-100"
-          title="إغلاق القائمة"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
         <div className="mb-6 px-2 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -1670,6 +1681,22 @@ export const YTLinkerOps: React.FC<Props> = ({
 
         {/* Tab Selection */}
         <div className="space-y-1.5 flex-1">
+          <button
+            onClick={handleGoHome}
+            title="الرئيسية"
+            aria-label="الرئيسية"
+            className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'search' && searchSection === 'all'
+                ? isLight
+                  ? 'bg-[#205100] text-white shadow-sm'
+                  : 'bg-sky-500 text-slate-950 font-bold shadow-md'
+                : 'hover:bg-black/5 dark:hover:bg-white/5 opacity-80'
+            }`}
+          >
+            <Home className="w-4 h-4" />
+            <span>الرئيسية</span>
+          </button>
+
           <button
             onClick={() => { setActiveTab('search'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -1788,16 +1815,6 @@ export const YTLinkerOps: React.FC<Props> = ({
           isLight ? 'bg-[#f7fbed]/80 border-[#c1c9b6]' : 'bg-[#0a0e1a]/80 border-white/10'
         }`}>
           <div className="flex items-center gap-2 min-w-0">
-            {/* زر فتح القائمة (شاشات صغيرة فقط) */}
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className={`lg:hidden p-2 rounded-lg border flex-shrink-0 ${
-                isLight ? 'border-[#c1c9b6] bg-white text-[#205100]' : 'border-white/10 bg-white/5 text-sky-400'
-              }`}
-              title="فتح القائمة"
-            >
-              <List className="w-4 h-4" />
-            </button>
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-bold tracking-tight truncate">
                 يوتيوب أكاديمي
@@ -1836,13 +1853,12 @@ export const YTLinkerOps: React.FC<Props> = ({
 
         {/* Canvas Body */}
         <main className="mobile-main p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 min-w-0">
-          {activeTab === 'search' && (
-            <>
-              {/* Target Query Search Box */}
+          <div className="mobile-sticky-controls">
+            {activeTab === 'search' && (
               <div className={`mobile-search-card p-6 rounded-xl border ${
                 isLight ? 'bg-white border-[#c1c9b6] shadow-sm' : 'glass-card'
               }`}>
-                <form onSubmit={handleExecuteSearch} className="flex flex-col md:flex-row gap-4 items-end">
+                <form onSubmit={handleExecuteSearch} className="mobile-search-form flex flex-col md:flex-row gap-4 items-end">
                   <div className="flex-1 w-full">
                     <label className="block text-xs font-bold tracking-wider mb-2 opacity-75 uppercase flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-sky-400" />
@@ -1867,7 +1883,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                   <button
                     type="submit"
                     disabled={loading}
-                    className={`px-7 py-3 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-md ${
+                    className={`mobile-search-submit px-7 py-3 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-md ${
                       isLight
                         ? 'bg-[#205100] text-white hover:bg-green-900 disabled:opacity-50'
                         : 'bg-sky-500 text-slate-950 hover:bg-sky-400 disabled:opacity-50'
@@ -1876,18 +1892,131 @@ export const YTLinkerOps: React.FC<Props> = ({
                     {loading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>جاري جلب الفيديوهات والقنوات...</span>
+                        <span>جاري البحث...</span>
                       </>
                     ) : (
                       <>
                         <Search className="w-4 h-4" />
-                        <span>بحث شامل في يوتيوب</span>
+                        <span>بحث</span>
                       </>
                     )}
                   </button>
                 </form>
               </div>
+            )}
 
+            <div className={`mobile-quick-nav ${mobileQuickNavExpanded ? 'is-expanded' : ''}`}>
+              <div id="mobile-quick-nav-items" className="mobile-quick-nav-scroll" role="toolbar" aria-label="التنقل السريع">
+                <button
+                  type="button"
+                  onClick={handleGoHome}
+                  className={`mobile-quick-nav-item ${activeTab === 'search' && searchSection === 'all' ? 'is-active' : ''}`}
+                  title="الرئيسية"
+                  aria-label="الرئيسية"
+                  aria-current={activeTab === 'search' && searchSection === 'all' ? 'page' : undefined}
+                >
+                  <Home className="w-4 h-4" />
+                  <span>الرئيسية</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('search')}
+                  className={`mobile-quick-nav-item ${activeTab === 'search' ? 'is-active' : ''}`}
+                  title={t(lang, 'searchTab')}
+                  aria-label={t(lang, 'searchTab')}
+                >
+                  <Search className="w-4 h-4" />
+                  <span>{t(lang, 'searchTab')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('collections')}
+                  className={`mobile-quick-nav-item ${activeTab === 'collections' ? 'is-active' : ''}`}
+                  title={t(lang, 'collectionsTab')}
+                  aria-label={t(lang, 'collectionsTab')}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  <span>{t(lang, 'collectionsTab')}</span>
+                  <b className="mobile-quick-nav-count">{collectionFolders.length}</b>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('favorites')}
+                  className={`mobile-quick-nav-item ${activeTab === 'favorites' ? 'is-active' : ''}`}
+                  title="المفضلة"
+                  aria-label="المفضلة"
+                >
+                  <Star className={`w-4 h-4 ${activeTab === 'favorites' ? 'fill-current' : ''}`} />
+                  <span>المفضلة</span>
+                  <b className="mobile-quick-nav-count">{favoriteVideos.length + favoriteChannels.length + favoritePlaylists.length}</b>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('history')}
+                  className={`mobile-quick-nav-item ${activeTab === 'history' ? 'is-active' : ''}`}
+                  title={t(lang, 'historyTab')}
+                  aria-label={t(lang, 'historyTab')}
+                >
+                  <History className="w-4 h-4" />
+                  <span>{t(lang, 'historyTab')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('settings')}
+                  className={`mobile-quick-nav-item ${activeTab === 'settings' ? 'is-active' : ''}`}
+                  title={t(lang, 'settingsTab')}
+                  aria-label={t(lang, 'settingsTab')}
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>{t(lang, 'settingsTab')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowChannelInputModal(true)}
+                  className="mobile-quick-nav-item"
+                  title={t(lang, 'addChannelUrl')}
+                  aria-label={t(lang, 'addChannelUrl')}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>{t(lang, 'addChannelUrl')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="mobile-quick-nav-item"
+                  title={t(lang, 'addCustomUrl')}
+                  aria-label={t(lang, 'addCustomUrl')}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{t(lang, 'addCustomUrl')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyAll}
+                  className="mobile-quick-nav-item"
+                  title={t(lang, 'copyAll')}
+                  aria-label={t(lang, 'copyAll')}
+                >
+                  <Copy className="w-4 h-4" />
+                  <span>{t(lang, 'copyAll')}</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                className="mobile-quick-nav-toggle"
+                onClick={() => setMobileQuickNavExpanded((expanded) => !expanded)}
+                aria-expanded={mobileQuickNavExpanded}
+                aria-controls="mobile-quick-nav-items"
+                title={mobileQuickNavExpanded ? 'طي الخيارات' : 'توسيع الخيارات'}
+                aria-label={mobileQuickNavExpanded ? 'طي الخيارات' : 'توسيع الخيارات'}
+              >
+                {mobileQuickNavExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {activeTab === 'search' && (
+            <>
               {/* View Section Filters (All / Videos / Channels) */}
               <div className="mobile-section-tabs flex items-center gap-3 border-b border-black/10 dark:border-white/10 pb-3">
                 <button
@@ -4030,14 +4159,20 @@ export const YTLinkerOps: React.FC<Props> = ({
                       <Shrink className="w-4 h-4" />
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={handleTogglePictureInPicture}
-                      title="نافذة عائمة (Picture-in-Picture)"
-                      className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                    >
-                      <PictureInPicture2 className="w-4 h-4" />
-                    </button>
+                    {isDesktopViewport && (
+                      <button
+                        type="button"
+                        onClick={handleTogglePictureInPicture}
+                        title="نافذة عائمة (Picture-in-Picture)"
+                        aria-label="نافذة عائمة (Picture-in-Picture)"
+                        aria-pressed={isPipActive}
+                        className={`p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-colors ${
+                          isPipActive ? 'bg-sky-500/20 text-sky-400 opacity-100' : ''
+                        }`}
+                      >
+                        <PictureInPicture2 className="w-4 h-4" />
+                      </button>
+                    )}
 
                     <button
                       type="button"
