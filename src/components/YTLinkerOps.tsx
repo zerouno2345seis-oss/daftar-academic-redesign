@@ -1980,7 +1980,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       </nav>
 
       {/* Main Content Area */}
-      <div className={`flex-1 min-w-0 overflow-x-hidden ${lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'} flex flex-col min-h-screen pb-24`}>
+      <div className={`desktop-main flex-1 min-w-0 overflow-x-hidden ${lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'} flex flex-col min-h-screen pb-24`}>
         {/* Header Bar */}
         <header className={`min-h-16 border-b px-4 sm:px-8 py-2 flex items-center justify-between gap-2 sticky top-0 z-10 backdrop-blur-md ${
           isLight ? 'bg-[#f7fbed]/80 border-[#c1c9b6]' : 'bg-[#0a0e1a]/80 border-white/10'
@@ -2023,10 +2023,10 @@ export const YTLinkerOps: React.FC<Props> = ({
         </header>
 
         {/* Canvas Body */}
-        <main className="mobile-main p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 min-w-0">
+        <main className="desktop-main-content mobile-main p-4 sm:p-8 space-y-6 max-w-7xl mx-auto w-full flex-1 min-w-0">
           <div className="mobile-sticky-controls">
             {activeTab === 'search' && (
-              <div className={`mobile-search-card p-6 rounded-xl border ${
+              <div className={`desktop-search-card mobile-search-card p-6 rounded-xl border ${
                 isLight ? 'bg-white border-[#c1c9b6] shadow-sm' : 'glass-card'
               }`}>
                 <form onSubmit={handleExecuteSearch} className="mobile-search-form flex flex-col md:flex-row gap-4 items-end">
@@ -2185,7 +2185,7 @@ export const YTLinkerOps: React.FC<Props> = ({
           {activeTab === 'search' && (
             <>
               {/* View Section Filters (All / Videos / Channels) */}
-              <div className="mobile-section-tabs flex items-center gap-3 border-b border-black/10 dark:border-white/10 pb-3">
+              <div className="desktop-section-tabs mobile-section-tabs flex items-center gap-3 border-b border-black/10 dark:border-white/10 pb-3">
                 <button
                   onClick={() => setSearchSection('all')}
                   className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
@@ -2223,9 +2223,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </button>
               </div>
 
+              <div className={`desktop-search-results-grid ${searchSection !== 'all' ? 'is-single-section' : ''}`}>
               {/* SECTION 1: VIDEOS */}
               {(searchSection === 'all' || searchSection === 'videos') && (
-                <div className="space-y-4 pt-2">
+                <div className="desktop-video-section space-y-4 pt-2">
                   <div className="mobile-section-heading flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
                     <h3 className="font-bold text-base flex items-center gap-2">
                       <Film className="w-5 h-5 text-red-500" />
@@ -2856,7 +2857,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
               {/* SECTION 2: CHANNELS */}
               {(searchSection === 'all' || searchSection === 'channels') && (
-                <div className="space-y-4 pt-6 border-t border-black/10 dark:border-white/10">
+                <div className="desktop-channel-section space-y-4 pt-6 border-t border-black/10 dark:border-white/10">
                   <div className="mobile-section-heading flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <h3 className="font-bold text-base flex items-center gap-2">
                       <Users className="w-5 h-5 text-sky-400" />
@@ -3053,8 +3054,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </div>
               )}
 
+              </div>
+
               {/* Format Hint Banner */}
-              <div className={`mobile-format-banner p-4 rounded-xl border flex items-start gap-3 ${
+              <div className={`desktop-format-banner mobile-format-banner p-4 rounded-xl border flex items-start gap-3 ${
                 isLight ? 'bg-[#ebf0e2] border-[#c1c9b6]' : 'bg-[#141c2e] border-white/10'
               }`}>
                 <Info className="w-5 h-5 text-sky-500 mt-0.5 flex-shrink-0" />
@@ -3843,7 +3846,7 @@ export const YTLinkerOps: React.FC<Props> = ({
         </main>
 
         {/* Sticky Action Footer */}
-        <div className={`mobile-sticky-footer fixed bottom-0 ${lang === 'ar' ? 'left-0 right-64' : 'right-0 left-64'} border-t p-4 flex items-center justify-between z-20 backdrop-blur-md ${
+        <div className={`desktop-sticky-footer mobile-sticky-footer fixed bottom-0 ${lang === 'ar' ? 'left-0 right-64' : 'right-0 left-64'} border-t p-4 flex items-center justify-between z-20 backdrop-blur-md ${
           isLight ? 'bg-[#f7fbed]/90 border-[#c1c9b6]' : 'bg-[#0a0e1a]/90 border-white/10'
         }`}>
           <div className="mobile-footer-status text-xs font-mono font-medium opacity-80 flex items-center gap-2">
