@@ -43,6 +43,8 @@ import {
   ChevronDown,
   ChevronUp,
   MoreHorizontal,
+  PanelRightClose,
+  PanelRightOpen,
   Pencil,
   Check,
   X,
@@ -364,6 +366,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   const [mobileVideoOptionsOpen, setMobileVideoOptionsOpen] = useState(false);
   const [mobileQuickNavExpanded, setMobileQuickNavExpanded] = useState(false);
   const [desktopActionsOpen, setDesktopActionsOpen] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
 
   const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches
@@ -390,6 +393,29 @@ export const YTLinkerOps: React.FC<Props> = ({
   const handleSelectTab = (tab: 'search' | 'collections' | 'favorites' | 'history' | 'settings') => {
     setActiveTab(tab);
     setSidebarOpen(false);
+  };
+
+  type SearchHistoryEntry = { id: string; query: string; createdAt: string };
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('yt_linker_search_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('yt_linker_search_history', JSON.stringify(searchHistory.slice(0, 30)));
+  }, [searchHistory]);
+
+  const rememberSearch = (searchQuery: string) => {
+    const normalized = searchQuery.trim();
+    if (!normalized) return;
+    setSearchHistory((prev) => [
+      { id: `search-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, query: normalized, createdAt: new Date().toISOString() },
+      ...prev.filter((entry) => entry.query !== normalized)
+    ].slice(0, 30));
   };
 
   // Helper functions for sorting & parsing
@@ -1407,6 +1433,19 @@ export const YTLinkerOps: React.FC<Props> = ({
     }
   };
 
+  const executeSearchValue = (value: string) => {
+    const q = value.trim();
+    if (!q) return;
+    rememberSearch(q);
+    if (q.includes('list=') || q.includes('playlist') || /^(PL|UU|FL|OL|RD)[a-zA-Z0-9_-]+$/.test(q)) {
+      handleExtractPlaylist(q);
+    } else if (q.includes('youtube.com/@') || q.includes('youtube.com/channel/') || q.includes('youtube.com/c/') || q.startsWith('@')) {
+      handleExtractFromChannelUrl(q);
+    } else {
+      performYouTubeSearch(q);
+    }
+  };
+
   const handleExecuteSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     handleGoHome();
@@ -1415,14 +1454,13 @@ export const YTLinkerOps: React.FC<Props> = ({
       showToast(lang === 'ar' ? 'الرجاء كتابة نص للبحث في يوتيوب' : 'Please type a term to search on YouTube');
       return;
     }
+    executeSearchValue(q);
+  };
 
-    if (q.includes('list=') || q.includes('playlist') || /^(PL|UU|FL|OL|RD)[a-zA-Z0-9_-]+$/.test(q)) {
-      handleExtractPlaylist(q);
-    } else if (q.includes('youtube.com/@') || q.includes('youtube.com/channel/') || q.includes('youtube.com/c/') || q.startsWith('@')) {
-      handleExtractFromChannelUrl(q);
-    } else {
-      performYouTubeSearch(q);
-    }
+  const handleReplaySearch = (entry: SearchHistoryEntry) => {
+    handleGoHome();
+    setQuery(entry.query);
+    executeSearchValue(entry.query);
   };
 
   // Extract channel videos directly from a channel URL or handle
@@ -1809,13 +1847,13 @@ export const YTLinkerOps: React.FC<Props> = ({
       isLight ? 'bg-[#f7fbed] text-[#181d15]' : 'bg-[#0a0e1a] text-[#e0e8f0]'
     }`}>
       {/* Sidebar Navigation */}
-      <nav className={`mobile-sidebar w-64 border-r flex flex-col py-6 px-4 fixed h-full z-30 overflow-y-auto transition-transform duration-200 ${
+      <nav className={`desktop-sidebar mobile-sidebar w-64 border-r flex flex-col py-6 px-4 fixed h-full z-30 overflow-y-auto transition-[transform,width] duration-200 ${desktopSidebarCollapsed ? 'is-collapsed' : ''} ${
         sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
       } ${
         isLight ? 'bg-[#d7dccf] border-[#c1c9b6] text-[#205100]' : 'bg-[#141c2e] border-white/10 text-sky-400'
       }`}>
-        <div className="mb-6 px-2 flex items-center justify-between">
-          <div>
+        <div className="desktop-sidebar-header mb-6 px-2 flex items-center justify-between gap-2">
+          <div className="desktop-sidebar-brand min-w-0">
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <Youtube className="w-6 h-6 text-red-500" />
               <span>يوتيوب أكاديمي</span>
@@ -1828,6 +1866,16 @@ export const YTLinkerOps: React.FC<Props> = ({
               <span>مزامنة نشطة</span>
             </div>
           </div>
+          <button
+            type="button"
+            className="desktop-sidebar-toggle p-2 rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            onClick={() => setDesktopSidebarCollapsed((collapsed) => !collapsed)}
+            aria-expanded={!desktopSidebarCollapsed}
+            aria-label={desktopSidebarCollapsed ? 'توسيع الشريط الجانبي' : 'طي الشريط الجانبي'}
+            title={desktopSidebarCollapsed ? 'توسيع الشريط الجانبي' : 'طي الشريط الجانبي'}
+          >
+            {desktopSidebarCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+          </button>
         </div>
 
         {/* Tab Selection */}
@@ -1848,20 +1896,6 @@ export const YTLinkerOps: React.FC<Props> = ({
           >
             <Home className="w-4 h-4" />
             <span>الرئيسية</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveTab('search'); setSidebarOpen(false); }}
-            className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'search' && searchSection !== 'all'
-                ? isLight
-                  ? 'bg-[#205100] text-white shadow-sm'
-                  : 'bg-sky-500 text-slate-950 font-bold shadow-md'
-                : 'hover:bg-black/5 dark:hover:bg-white/5 opacity-80'
-            }`}
-          >
-            <Search className="w-4 h-4" />
-            <span>{t(lang, 'searchTab')}</span>
           </button>
 
           </div>
@@ -1980,7 +2014,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       </nav>
 
       {/* Main Content Area */}
-      <div className={`desktop-main flex-1 min-w-0 overflow-x-hidden ${lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'} flex flex-col min-h-screen pb-24`}>
+      <div className={`desktop-main ${desktopSidebarCollapsed ? 'desktop-main-sidebar-collapsed' : ''} flex-1 min-w-0 overflow-x-hidden ${lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'} flex flex-col min-h-screen pb-24`}>
         {/* Header Bar */}
         <header className={`min-h-16 border-b px-4 sm:px-8 py-2 flex items-center justify-between gap-2 sticky top-0 z-10 backdrop-blur-md ${
           isLight ? 'bg-[#f7fbed]/80 border-[#c1c9b6]' : 'bg-[#0a0e1a]/80 border-white/10'
@@ -3755,6 +3789,33 @@ export const YTLinkerOps: React.FC<Props> = ({
           {activeTab === 'history' && (
             <div className="space-y-4">
               <h3 className="font-bold text-lg">{t(lang, 'historyTab')}</h3>
+              <div className={`rounded-xl border p-4 space-y-2 ${isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold">عمليات البحث السابقة</h4>
+                  <span className="text-[10px] opacity-60">اضغط لإعادة البحث</span>
+                </div>
+                {searchHistory.length === 0 ? (
+                  <p className="text-xs opacity-60 py-2">لا توجد عمليات بحث محفوظة بعد.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {searchHistory.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => handleReplaySearch(entry)}
+                        className="history-search-item flex items-center justify-between gap-3 rounded-lg border border-black/10 dark:border-white/10 px-3 py-2 text-start hover:border-sky-400 hover:bg-sky-500/10 transition-colors"
+                        title={`إعادة البحث عن: ${entry.query}`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <Search className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                          <span className="truncate text-xs font-semibold">{entry.query}</span>
+                        </span>
+                        <span className="text-[10px] opacity-55 shrink-0">{new Date(entry.createdAt).toLocaleDateString('ar-EG')}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className={`p-4 rounded-xl border font-mono text-xs space-y-2 ${isLight ? 'bg-white border-[#c1c9b6]' : 'bg-[#0a0e1a] border-white/10'}`}>
                 {historyLogs.map((log, index) => (
                   <div key={index} className="flex items-center gap-2 opacity-80 border-b pb-1.5 border-black/5 dark:border-white/5 last:border-0">

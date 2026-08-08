@@ -341,8 +341,12 @@
   /* Desktop command center surface: a stable right rail and two focused
      result panes, matching the approved wide-screen concept. */
   .desktop-main {
-    margin-inline-start: 0 !important;
-    margin-inline-end: 17rem !important;
+    margin-left: 0 !important;
+    margin-right: 17rem !important;
+  }
+
+  .desktop-main.desktop-main-sidebar-collapsed {
+    margin-right: 5rem !important;
   }
 
   .mobile-sidebar {
@@ -354,6 +358,57 @@
     border-right: 0;
     border-left: 1px solid #c1c9b6;
     box-shadow: -12px 0 30px rgba(32, 81, 0, 0.08);
+  }
+
+  .desktop-sidebar.is-collapsed {
+    width: 5rem;
+    padding-inline: 0.7rem;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-brand {
+    display: grid;
+    justify-items: center;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-brand h1 {
+    justify-content: center;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-brand h1 span,
+  .desktop-sidebar.is-collapsed .desktop-sidebar-brand p,
+  .desktop-sidebar.is-collapsed .desktop-sidebar-brand > div,
+  .desktop-sidebar.is-collapsed .desktop-sidebar-group-title,
+  .desktop-sidebar.is-collapsed .desktop-sidebar-nav button span,
+  .desktop-sidebar.is-collapsed .desktop-sidebar-nav button > span,
+  .desktop-sidebar.is-collapsed .desktop-sidebar-actions span {
+    display: none;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-header {
+    flex-direction: column;
+    padding-inline: 0;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-nav button,
+  .desktop-sidebar.is-collapsed .desktop-sidebar-actions button {
+    justify-content: center;
+    padding-inline: 0.5rem;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-nav button > div {
+    justify-content: center;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-nav button > div > span {
+    display: none;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-nav button > span:last-child {
+    display: none;
+  }
+
+  .desktop-sidebar.is-collapsed .desktop-sidebar-actions > p {
+    display: none;
   }
 
   .dark .mobile-sidebar {
@@ -556,6 +611,12 @@
 
   .desktop-sticky-footer {
     box-shadow: 0 -8px 24px rgba(32, 81, 0, 0.06);
+  }
+
+  .history-search-item:focus-visible,
+  .desktop-sidebar-toggle:focus-visible {
+    outline: 3px solid rgba(14, 165, 233, 0.35);
+    outline-offset: 2px;
   }
 }
 
