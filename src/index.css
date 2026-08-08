@@ -538,6 +538,62 @@
     padding-inline: 0.1rem;
   }
 
+  .desktop-channel-section > .mobile-section-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(9.5rem, auto) auto;
+    align-items: center;
+    column-gap: 0.55rem;
+  }
+
+  .desktop-channel-section > .mobile-section-heading > h3 {
+    min-width: 0;
+    line-height: 1.35;
+  }
+
+  .desktop-channel-section > .mobile-section-heading > h3 span:not(.font-mono) {
+    min-width: 0;
+  }
+
+  .desktop-channel-section > .mobile-section-heading > div {
+    min-width: 0;
+  }
+
+  .desktop-channel-section > .mobile-section-heading > div:not(.mobile-video-options) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.35rem;
+    border-radius: 0.7rem;
+  }
+
+  .desktop-channel-section > .mobile-section-heading select {
+    min-width: 0;
+    max-width: 8.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .desktop-channel-section > .mobile-section-heading > div:last-child {
+    gap: 0.15rem;
+    padding: 0.2rem;
+    border: 1px solid rgba(32, 81, 0, 0.16);
+    background: rgba(255, 255, 255, 0.55);
+  }
+
+  .dark .desktop-channel-section > .mobile-section-heading > div:last-child {
+    border-color: rgba(125, 211, 252, 0.2);
+    background: rgba(14, 165, 233, 0.07);
+  }
+
+  .desktop-channel-section > .mobile-section-heading > div:last-child button {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+  }
+
   .desktop-video-section .desktop-results-toolbar {
     width: 100%;
     flex-wrap: wrap;
@@ -974,6 +1030,19 @@
     width: 6.9rem;
     flex-basis: 6.9rem;
     height: 4.45rem;
+  }
+
+  .desktop-channel-section > .mobile-section-heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.55rem;
+  }
+
+  .desktop-channel-section > .mobile-section-heading > h3 {
+    grid-column: 1 / -1;
+  }
+
+  .desktop-channel-section > .mobile-section-heading > div:nth-child(2) {
+    justify-self: stretch;
   }
 
   .desktop-results-action {
