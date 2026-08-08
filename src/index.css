@@ -129,7 +129,7 @@
 
   .mobile-sticky-controls .mobile-search-card {
     margin: 0;
-    padding: 0.75rem;
+    padding: 0.55rem 0.7rem;
     border-radius: 0.8rem;
   }
 
@@ -144,8 +144,12 @@
     margin-bottom: 0.35rem;
   }
 
+  .mobile-search-form input {
+    padding-block: 0.625rem;
+  }
+
   .mobile-search-submit {
-    min-height: 2.75rem;
+    min-height: 2.5rem;
     justify-content: center;
     white-space: nowrap;
   }
@@ -265,7 +269,7 @@
   }
 
   .mobile-search-card {
-    padding: 0.85rem;
+    padding: 0.6rem;
     border-radius: 0.875rem;
   }
 
@@ -275,7 +279,7 @@
 
   .mobile-search-submit {
     width: auto;
-    min-height: 2.75rem;
+    min-height: 2.5rem;
     justify-content: center;
     font-size: 0.75rem;
     padding-inline: 0.8rem !important;

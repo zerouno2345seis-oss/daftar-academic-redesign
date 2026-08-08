@@ -316,6 +316,7 @@ export const YTLinkerOps: React.FC<Props> = ({
     setSearchSection('all');
     setSidebarOpen(false);
     setMobileVideoOptionsOpen(false);
+    setMobileQuickNavExpanded(false);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
   };
 
@@ -1251,6 +1252,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
   const handleExecuteSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    handleGoHome();
     const q = query.trim();
     if (!q) {
       showToast(lang === 'ar' ? 'الرجاء كتابة نص للبحث في يوتيوب' : 'Please type a term to search on YouTube');
@@ -1700,7 +1702,7 @@ export const YTLinkerOps: React.FC<Props> = ({
           <button
             onClick={() => { setActiveTab('search'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'search'
+              activeTab === 'search' && searchSection !== 'all'
                 ? isLight
                   ? 'bg-[#205100] text-white shadow-sm'
                   : 'bg-sky-500 text-slate-950 font-bold shadow-md'
@@ -1860,10 +1862,6 @@ export const YTLinkerOps: React.FC<Props> = ({
               }`}>
                 <form onSubmit={handleExecuteSearch} className="mobile-search-form flex flex-col md:flex-row gap-4 items-end">
                   <div className="flex-1 w-full">
-                    <label className="block text-xs font-bold tracking-wider mb-2 opacity-75 uppercase flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                      <span>بحث</span>
-                    </label>
                     <div className="relative">
                       <Search className={`w-4 h-4 absolute ${lang === 'ar' ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 opacity-50`} />
                       <input
@@ -1920,8 +1918,8 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSelectTab('search')}
-                  className={`mobile-quick-nav-item ${activeTab === 'search' ? 'is-active' : ''}`}
+                  onClick={handleGoHome}
+                  className={`mobile-quick-nav-item ${activeTab === 'search' && searchSection !== 'all' ? 'is-active' : ''}`}
                   title={t(lang, 'searchTab')}
                   aria-label={t(lang, 'searchTab')}
                 >
