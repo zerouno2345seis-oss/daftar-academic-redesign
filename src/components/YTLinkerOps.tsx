@@ -358,6 +358,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
   const [videoSortOption, setVideoSortOption] = useState<VideoSortOption>('default');
   const [channelSortOption, setChannelSortOption] = useState<ChannelSortOption>('default');
+  const [desktopResultSection, setDesktopResultSection] = useState<'videos' | 'channels'>('videos');
 
   // View mode (grid of icons vs. list) for video & channel results
   type ViewMode = 'grid' | 'list';
@@ -383,6 +384,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   const handleGoHome = () => {
     setActiveTab('search');
     setSearchSection('all');
+    setDesktopResultSection('videos');
     setSidebarOpen(false);
     setMobileVideoOptionsOpen(false);
     setMobileQuickNavExpanded(false);
@@ -2257,7 +2259,37 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </button>
               </div>
 
-              <div className={`desktop-search-results-grid ${searchSection !== 'all' ? 'is-single-section' : ''}`}>
+              <div className="desktop-section-switcher" role="tablist" aria-label="التنقل بين الفيديوهات والقنوات">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={desktopResultSection === 'videos'}
+                  className={desktopResultSection === 'videos' ? 'is-active' : ''}
+                  onClick={() => setDesktopResultSection('videos')}
+                  title="عرض فيديوهات يوتيوب"
+                >
+                  <Film className="w-4 h-4" />
+                  <span>الفيديوهات</span>
+                  <b>{items.length}</b>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={desktopResultSection === 'channels'}
+                  className={desktopResultSection === 'channels' ? 'is-active' : ''}
+                  onClick={() => setDesktopResultSection('channels')}
+                  title="عرض القنوات المطابقة"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>القنوات</span>
+                  <b>{channels.length}</b>
+                </button>
+              </div>
+
+              <div
+                className={`desktop-search-results-grid ${searchSection !== 'all' ? 'is-single-section' : ''}`}
+                data-desktop-section={desktopResultSection}
+              >
               {/* SECTION 1: VIDEOS */}
               {(searchSection === 'all' || searchSection === 'videos') && (
                 <div className="desktop-video-section space-y-4 pt-2">

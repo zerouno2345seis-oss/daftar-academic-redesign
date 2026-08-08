@@ -105,6 +105,10 @@
   display: none;
 }
 
+.desktop-section-switcher {
+  display: none;
+}
+
 /* Desktop command-center layout. Mobile keeps the existing compact toolbar. */
 @media (min-width: 1024px) {
   .desktop-sidebar-nav {
@@ -487,6 +491,81 @@
     padding: 0.15rem 0;
     justify-content: flex-start;
     gap: 0.55rem;
+  }
+
+  .desktop-section-tabs {
+    display: none;
+  }
+
+  .desktop-section-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    align-self: flex-start;
+    padding: 0.25rem;
+    border: 1px solid rgba(32, 81, 0, 0.16);
+    border-radius: 0.8rem;
+    background: rgba(255, 255, 255, 0.62);
+  }
+
+  .desktop-section-switcher button {
+    min-height: 2.35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 0.6rem;
+    color: #205100;
+    font-size: 0.72rem;
+    font-weight: 800;
+    white-space: nowrap;
+    transition: background-color 0.18s ease, color 0.18s ease;
+  }
+
+  .desktop-section-switcher button b {
+    min-width: 1.35rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 999px;
+    background: rgba(32, 81, 0, 0.1);
+    font-size: 0.62rem;
+  }
+
+  .desktop-section-switcher button.is-active {
+    color: white;
+    background: #205100;
+  }
+
+  .desktop-section-switcher button.is-active b {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .dark .desktop-section-switcher {
+    border-color: rgba(125, 211, 252, 0.18);
+    background: rgba(20, 28, 46, 0.58);
+  }
+
+  .dark .desktop-section-switcher button {
+    color: rgb(186, 230, 253);
+  }
+
+  .dark .desktop-section-switcher button b {
+    background: rgba(56, 189, 248, 0.14);
+  }
+
+  .dark .desktop-section-switcher button.is-active {
+    color: #082f49;
+    background: rgb(56, 189, 248);
+  }
+
+  .desktop-search-results-grid[data-desktop-section='videos'],
+  .desktop-search-results-grid[data-desktop-section='channels'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop-search-results-grid[data-desktop-section='videos'] .desktop-channel-section,
+  .desktop-search-results-grid[data-desktop-section='channels'] .desktop-video-section {
+    display: none;
   }
 
   .desktop-section-tabs button {
