@@ -99,6 +99,28 @@ const normalizeSharedUrl = (value: string) => {
   }
 };
 
+const extractYouTubeVideoId = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+    let candidate = '';
+
+    if (host === 'youtu.be') {
+      candidate = parsed.pathname.split('/').filter(Boolean)[0] || '';
+    } else if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+      candidate = parsed.searchParams.get('v') || '';
+      if (!candidate) {
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        if (['shorts', 'embed', 'live', 'v'].includes(parts[0]?.toLowerCase() || '')) candidate = parts[1] || '';
+      }
+    }
+
+    return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : '';
+  } catch {
+    return '';
+  }
+};
+
 const upsertFavoriteVideo = (videos: SearchResultItem[], item: SearchResultItem) => {
   const existingIndex = videos.findIndex((video) => video.id === item.id || video.url === item.url);
   if (existingIndex < 0) return [item, ...videos];
@@ -637,9 +659,17 @@ export const YTLinkerOps: React.FC<Props> = ({
   }, [previewVideo?.id]);
 
   const openPlayerQueue = (videos: SearchResultItem[], startIndex: number = 0) => {
-    const valid = videos.filter((v) => v && v.id);
+    const valid = videos
+      .filter((v) => v && (extractYouTubeVideoId(v.url) || /^[A-Za-z0-9_-]{11}$/.test(v.id)))
+      .map((v) => ({ ...v, id: extractYouTubeVideoId(v.url) || v.id }));
     if (valid.length === 0) {
-      showToast(lang === 'ar' ? 'لا توجد فيديوهات صالحة للتشغيل في هذه القائمة' : 'No playable videos in this list');
+      const externalLink = videos.find((v) => v?.url)?.url;
+      if (externalLink) {
+        window.open(externalLink, '_blank', 'noopener,noreferrer');
+        showToast(lang === 'ar' ? 'هذا الرابط خارجي، تم فتحه في نافذة جديدة' : 'External link opened in a new window');
+      } else {
+        showToast(lang === 'ar' ? 'لا توجد فيديوهات صالحة للتشغيل في هذه القائمة' : 'No playable videos in this list');
+      }
       return;
     }
     const safeIndex = Math.min(Math.max(startIndex, 0), valid.length - 1);
@@ -1089,12 +1119,15 @@ export const YTLinkerOps: React.FC<Props> = ({
 
     sharedLinkHandledRef.current = true;
     const title = (params.get('title') || '').trim() || getSharedUrlHost(sharedUrl);
+    const youtubeVideoId = extractYouTubeVideoId(sharedUrl);
     const sharedItem: SearchResultItem = {
-      id: createStableSharedId(sharedUrl),
+      id: youtubeVideoId || createStableSharedId(sharedUrl),
       title,
       duration: 'N/A',
       url: sharedUrl,
-      thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=500&auto=format&fit=crop&q=60',
+      thumbnail: youtubeVideoId
+        ? `https://i.ytimg.com/vi/${youtubeVideoId}/hqdefault.jpg`
+        : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=500&auto=format&fit=crop&q=60',
       thumbnailAlt: title,
       selected: true,
       channelTitle: getSharedUrlHost(sharedUrl),
@@ -1112,6 +1145,9 @@ export const YTLinkerOps: React.FC<Props> = ({
     }
     setActiveTab('favorites');
     setFavoritesFilter('videos');
+    if (youtubeVideoId) {
+      window.setTimeout(() => openPlayerQueue([sharedItem]), 0);
+    }
     window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash}`);
 
     // Fetch Open Graph metadata server-side so external links (Facebook,
