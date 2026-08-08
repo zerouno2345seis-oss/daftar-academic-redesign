@@ -3090,18 +3090,6 @@ export const YTLinkerOps: React.FC<Props> = ({
 
               </div>
 
-              {/* Format Hint Banner */}
-              <div className={`desktop-format-banner mobile-format-banner p-4 rounded-xl border flex items-start gap-3 ${
-                isLight ? 'bg-[#ebf0e2] border-[#c1c9b6]' : 'bg-[#141c2e] border-white/10'
-              }`}>
-                <Info className="w-5 h-5 text-sky-500 mt-0.5 flex-shrink-0" />
-                <div className="text-xs space-y-1">
-                  <p className="font-bold">{t(lang, 'outputFormatTitle')}</p>
-                  <p className="opacity-80 leading-relaxed font-mono">
-                    {t(lang, 'outputFormatDesc')}
-                  </p>
-                </div>
-              </div>
             </>
           )}
 
