@@ -42,6 +42,7 @@ import {
   Home,
   ChevronDown,
   ChevronUp,
+  MoreHorizontal,
   X,
   ListOrdered,
   List,
@@ -325,6 +326,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   const [channelViewMode, setChannelViewMode] = useState<ViewMode>('grid');
   const [mobileVideoOptionsOpen, setMobileVideoOptionsOpen] = useState(false);
   const [mobileQuickNavExpanded, setMobileQuickNavExpanded] = useState(false);
+  const [desktopActionsOpen, setDesktopActionsOpen] = useState(false);
 
   const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches
@@ -344,6 +346,7 @@ export const YTLinkerOps: React.FC<Props> = ({
     setSidebarOpen(false);
     setMobileVideoOptionsOpen(false);
     setMobileQuickNavExpanded(false);
+    setDesktopActionsOpen(false);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
   };
 
@@ -1768,7 +1771,9 @@ export const YTLinkerOps: React.FC<Props> = ({
         </div>
 
         {/* Tab Selection */}
-        <div className="space-y-1.5 flex-1">
+        <div className="desktop-sidebar-nav flex-1">
+          <div className="desktop-sidebar-group">
+            <p className="desktop-sidebar-group-title">أساسي</p>
           <button
             onClick={handleGoHome}
             title="الرئيسية"
@@ -1799,6 +1804,11 @@ export const YTLinkerOps: React.FC<Props> = ({
             <span>{t(lang, 'searchTab')}</span>
           </button>
 
+          </div>
+
+          <div className="desktop-sidebar-group">
+            <p className="desktop-sidebar-group-title">المكتبة</p>
+
           <button
             onClick={() => { setActiveTab('collections'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -1812,6 +1822,11 @@ export const YTLinkerOps: React.FC<Props> = ({
             <FolderOpen className="w-4 h-4" />
             <span>{t(lang, 'collectionsTab')} ({collectionFolders.length})</span>
           </button>
+
+          </div>
+
+          <div className="desktop-sidebar-group">
+            <p className="desktop-sidebar-group-title">النشاط</p>
 
           <button
             onClick={() => { setActiveTab('favorites'); setSidebarOpen(false); }}
@@ -1848,6 +1863,11 @@ export const YTLinkerOps: React.FC<Props> = ({
             <span>{t(lang, 'historyTab')}</span>
           </button>
 
+          </div>
+
+          <div className="desktop-sidebar-group">
+            <p className="desktop-sidebar-group-title">النظام</p>
+
           <button
             onClick={() => { setActiveTab('settings'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -1861,10 +1881,13 @@ export const YTLinkerOps: React.FC<Props> = ({
             <Settings className="w-4 h-4" />
             <span>{t(lang, 'settingsTab')}</span>
           </button>
+
+          </div>
         </div>
 
         {/* Sidebar Actions */}
-        <div className="pt-4 border-t border-black/10 dark:border-white/10 space-y-2">
+        <div className="desktop-sidebar-actions pt-4 border-t border-black/10 dark:border-white/10 space-y-2">
+          <p className="desktop-sidebar-group-title">إجراءات سريعة</p>
           <button
             onClick={() => setShowChannelInputModal(true)}
             className={`w-full py-2 px-3 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-1.5 border ${
@@ -2285,6 +2308,116 @@ export const YTLinkerOps: React.FC<Props> = ({
                           </label>
                         </div>
                       )}
+                    </div>
+
+                    <div className="desktop-results-toolbar" aria-label="إجراءات النتائج">
+                      <label className="desktop-results-select-all" title={t(lang, 'selectAll')}>
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          aria-label={t(lang, 'selectAll')}
+                        />
+                        <span>{t(lang, 'selectAll')}</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        className="desktop-results-action"
+                        onClick={() => {
+                          const activeVids = items.filter((i) => i.selected);
+                          openChunkerModal(activeVids.length > 0 ? activeVids : items, lang === 'ar' ? 'نتائج البحث الرئيسي' : 'Main Search Results');
+                        }}
+                        title="تقسيم النتائج إلى مستويات بحجم 299 فيديو"
+                        aria-label="تقسيم النتائج إلى مستويات بحجم 299 فيديو"
+                      >
+                        <ListOrdered className="w-4 h-4" />
+                        <span>تقسيم 299</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="desktop-results-action"
+                        onClick={() => {
+                          const activeVids = items.filter((i) => i.selected);
+                          const target = activeVids.length > 0 ? activeVids : items;
+                          handleOpenNotebookLMModal(target, query ? `بحث: ${query}` : 'نتائج البحث الرئيسي');
+                        }}
+                        title="إنشاء دفتر NotebookLM"
+                        aria-label="إنشاء دفتر NotebookLM"
+                      >
+                        <BookOpen className="w-4 h-4" />
+                        <span>دفتر NotebookLM</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="desktop-results-action desktop-results-action-primary"
+                        onClick={() => handleExportMd()}
+                        title={t(lang, 'exportMd')}
+                        aria-label={t(lang, 'exportMd')}
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>تصدير</span>
+                      </button>
+
+                      <div className="desktop-results-overflow">
+                        <button
+                          type="button"
+                          className="desktop-results-overflow-trigger"
+                          onClick={() => setDesktopActionsOpen((open) => !open)}
+                          aria-expanded={desktopActionsOpen}
+                          aria-controls="desktop-results-overflow-menu"
+                          aria-label="المزيد من إجراءات النتائج"
+                          title="المزيد من الإجراءات"
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </button>
+                        {desktopActionsOpen && (
+                          <div id="desktop-results-overflow-menu" className="desktop-results-overflow-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => { handleOpenSaveFolderModal(); setDesktopActionsOpen(false); }}
+                            >
+                              <FolderPlus className="w-4 h-4" />
+                              <span>{t(lang, 'saveToFolder')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => { handleExportTxt(); setDesktopActionsOpen(false); }}
+                            >
+                              <FileText className="w-4 h-4" />
+                              <span>{t(lang, 'exportTxt')}</span>
+                            </button>
+                            <label className="desktop-results-overflow-sort" role="menuitem">
+                              <ArrowUpDown className="w-4 h-4" />
+                              <span>ترتيب الفيديوهات</span>
+                              <select
+                                value={videoSortOption}
+                                onChange={(e) => setVideoSortOption(e.target.value as VideoSortOption)}
+                                aria-label="ترتيب الفيديوهات"
+                              >
+                                <option value="default">الافتراضي (حسب الصلة)</option>
+                                <option value="views_desc">الأكثر مشاهدة</option>
+                                <option value="date_desc">الأحدث تاريخاً</option>
+                                <option value="date_asc">الأقدم تاريخاً</option>
+                                <option value="color">حسب اللون</option>
+                              </select>
+                            </label>
+                            <div className="desktop-results-view-toggle" role="group" aria-label="طريقة عرض الفيديوهات">
+                              <span>طريقة العرض</span>
+                              <button type="button" onClick={() => setVideoViewMode('grid')} className={videoViewMode === 'grid' ? 'is-active' : ''} aria-label="عرض شبكي">
+                                <Layers className="w-4 h-4" />
+                              </button>
+                              <button type="button" onClick={() => setVideoViewMode('list')} className={videoViewMode === 'list' ? 'is-active' : ''} aria-label="عرض قائمة">
+                                <List className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="mobile-toolbar flex items-center gap-3 text-xs flex-wrap">
@@ -3606,7 +3739,7 @@ export const YTLinkerOps: React.FC<Props> = ({
             <button
               onClick={() => handleExportMd()}
               aria-label={t(lang, 'exportMd')}
-              className={`mobile-footer-action px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+              className={`mobile-footer-action desktop-footer-secondary px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
                 isLight ? 'border-[#205100] text-[#205100] hover:bg-[#205100]/10' : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
               }`}
               title="تصدير المحدد أو الكل لملف MD Markdown"
@@ -3618,7 +3751,7 @@ export const YTLinkerOps: React.FC<Props> = ({
             <button
               onClick={handleCopyVideoIds}
               aria-label="Copy Video IDs"
-              className={`mobile-footer-action px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+              className={`mobile-footer-action desktop-footer-secondary px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
                 isLight ? 'border-[#205100] text-[#205100] hover:bg-[#205100]/10' : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
               }`}
               title="Copy raw Video IDs only"
