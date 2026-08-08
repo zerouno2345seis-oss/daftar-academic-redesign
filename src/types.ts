@@ -15,6 +15,7 @@ export interface SearchResultItem {
   channelUrl?: string;
   views?: string;
   publishedAt?: string;
+  description?: string;
   colorTag?: ColorTag;
   isFavorite?: boolean;
   folderId?: string;

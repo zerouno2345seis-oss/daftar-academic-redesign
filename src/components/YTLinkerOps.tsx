@@ -43,6 +43,8 @@ import {
   ChevronDown,
   ChevronUp,
   MoreHorizontal,
+  Pencil,
+  Check,
   X,
   ListOrdered,
   List,
@@ -191,6 +193,8 @@ export const YTLinkerOps: React.FC<Props> = ({
   const sharedLinkHandledRef = useRef(false);
 
   const [favoritesFilter, setFavoritesFilter] = useState<'all' | 'videos' | 'channels' | 'playlists'>('all');
+  const [editingFavoriteVideoId, setEditingFavoriteVideoId] = useState<string | null>(null);
+  const [favoriteTitleDraft, setFavoriteTitleDraft] = useState('');
 
   // Favorite Folders: organize favorite videos into multiple named folders
   const [favoriteFolders, setFavoriteFolders] = useState<FavoriteFolder[]>(() => {
@@ -280,6 +284,21 @@ export const YTLinkerOps: React.FC<Props> = ({
       saveFavoriteToFirestore(updated, 'video');
       showToast(lang === 'ar' ? 'تمت حفظ الفيديو بـ Cloud Firestore ⭐' : 'Saved to Cloud Firestore ⭐');
     }
+  };
+
+  const handleRenameFavoriteVideo = (video: SearchResultItem) => {
+    const trimmedTitle = favoriteTitleDraft.trim();
+    if (!trimmedTitle) {
+      showToast('اكتب اسمًا للفيديو أولًا');
+      return;
+    }
+
+    const updated = { ...video, title: trimmedTitle };
+    setFavoriteVideos((prev) => prev.map((item) => item.id === video.id ? updated : item));
+    saveFavoriteToFirestore(updated, 'video');
+    setEditingFavoriteVideoId(null);
+    setFavoriteTitleDraft('');
+    showToast('تم تعديل اسم الفيديو وحفظه ⭐');
   };
 
   const handleToggleFavoriteChannel = (channel: ChannelItem) => {
@@ -966,6 +985,28 @@ export const YTLinkerOps: React.FC<Props> = ({
     setActiveTab('favorites');
     setFavoritesFilter('videos');
     window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash}`);
+
+    // Fetch Open Graph metadata server-side so external links (Facebook,
+    // articles, and other non-YouTube pages) receive their real thumbnail.
+    void fetch(`/api/link-preview?url=${encodeURIComponent(sharedUrl)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((preview: { title?: string; description?: string; image?: string } | null) => {
+        if (!preview || (!preview.title && !preview.description && !preview.image)) return;
+        const updatedItem: SearchResultItem = {
+          ...sharedItem,
+          title: preview.title || sharedItem.title,
+          thumbnail: preview.image || sharedItem.thumbnail,
+          thumbnailAlt: preview.title || sharedItem.thumbnailAlt,
+          description: preview.description
+        };
+        setFavoriteVideos((prev) => prev.map((video) => (
+          video.id === sharedItem.id || video.url === sharedUrl ? { ...video, ...updatedItem } : video
+        )));
+        saveFavoriteToFirestore(updatedItem, 'video');
+      })
+      .catch(() => {
+        // The fallback thumbnail remains available when a site blocks metadata.
+      });
   }, [favoriteVideos]);
 
   useEffect(() => {
@@ -3488,7 +3529,63 @@ export const YTLinkerOps: React.FC<Props> = ({
 
                             <div className="flex-1 flex flex-col justify-between">
                               <div>
-                                <h5 className="font-bold text-xs line-clamp-2 leading-snug mb-1">{item.title}</h5>
+                                {editingFavoriteVideoId === item.id ? (
+                                  <div className="favorite-title-editor mb-1">
+                                    <input
+                                      autoFocus
+                                      value={favoriteTitleDraft}
+                                      onChange={(e) => setFavoriteTitleDraft(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleRenameFavoriteVideo(item);
+                                        if (e.key === 'Escape') {
+                                          setEditingFavoriteVideoId(null);
+                                          setFavoriteTitleDraft('');
+                                        }
+                                      }}
+                                      aria-label="اسم الفيديو الجديد"
+                                      className="w-full rounded-md border px-2 py-1 text-xs font-semibold outline-none focus:ring-2 focus:ring-sky-400"
+                                    />
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRenameFavoriteVideo(item)}
+                                        className="p-1 rounded text-emerald-500 hover:bg-emerald-500/10"
+                                        title="حفظ الاسم"
+                                        aria-label="حفظ الاسم"
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingFavoriteVideoId(null);
+                                          setFavoriteTitleDraft('');
+                                        }}
+                                        className="p-1 rounded text-rose-400 hover:bg-rose-500/10"
+                                        title="إلغاء تعديل الاسم"
+                                        aria-label="إلغاء تعديل الاسم"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-start gap-1">
+                                    <h5 className="font-bold text-xs line-clamp-2 leading-snug mb-1 flex-1">{item.title}</h5>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingFavoriteVideoId(item.id);
+                                        setFavoriteTitleDraft(item.title);
+                                      }}
+                                      className="p-1 rounded text-sky-400 opacity-70 hover:opacity-100 hover:bg-sky-500/10 shrink-0"
+                                      title="تعديل اسم الفيديو"
+                                      aria-label={`تعديل اسم الفيديو: ${item.title}`}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
                                 <p className="text-[11px] opacity-70 truncate">{item.channelTitle}</p>
                               </div>
 

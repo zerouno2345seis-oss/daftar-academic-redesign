@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import yts from 'yt-search';
 import ytpl from 'ytpl';
 
@@ -421,6 +423,145 @@ app.use((req, res, next) => {
 
   app.get('/api/youtube/search', handleYouTubeSearchReq);
   app.get('/youtube/search', handleYouTubeSearchReq);
+
+  // Read lightweight Open Graph metadata for links received through the PWA
+  // share target. This keeps browser CORS out of the client and gives shared
+  // Facebook, article, and other external links a useful thumbnail preview.
+  const isUnsafePreviewHost = (hostname: string) => {
+    const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+    if (isIP(host) === 4) {
+      const octets = host.split('.').map(Number);
+      return octets[0] === 10
+        || octets[0] === 127
+        || (octets[0] === 169 && octets[1] === 254)
+        || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+        || (octets[0] === 192 && octets[1] === 168)
+        || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127)
+        || (octets[0] === 198 && (octets[1] === 18 || octets[1] === 19))
+        || octets[0] >= 224;
+    }
+    return isIP(host) === 6 && (
+      host === '::' || host === '::1' || host.startsWith('fc') || host.startsWith('fd')
+      || host.startsWith('fe8') || host.startsWith('fe9') || host.startsWith('fea') || host.startsWith('feb')
+      || host.startsWith('ff')
+    );
+  };
+
+  const isPublicPreviewUrl = async (candidate: URL) => {
+    if (!['http:', 'https:'].includes(candidate.protocol) || candidate.username || candidate.password || isUnsafePreviewHost(candidate.hostname)) {
+      return false;
+    }
+    if (isIP(candidate.hostname)) return true;
+    try {
+      const addresses = await lookup(candidate.hostname, { all: true, verbatim: true });
+      return addresses.length > 0 && addresses.every((address) => !isUnsafePreviewHost(address.address));
+    } catch {
+      return false;
+    }
+  };
+
+  const decodePreviewEntities = (value: string) => value
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .trim();
+
+  const extractPreviewMeta = (html: string, key: string) => {
+    const escapedKey = key.replace(':', '\\:');
+    const propertyFirst = new RegExp(`<meta[^>]+(?:property|name)=["']${escapedKey}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i');
+    const contentFirst = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${escapedKey}["'][^>]*>`, 'i');
+    const match = html.match(propertyFirst) || html.match(contentFirst);
+    return match?.[1] ? decodePreviewEntities(match[1]) : '';
+  };
+
+  app.get('/api/link-preview', async (req, res) => {
+    const rawUrl = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    let targetUrl: URL;
+    try {
+      targetUrl = new URL(rawUrl);
+    } catch {
+      return res.status(400).json({ error: 'A valid URL is required' });
+    }
+
+    if (!(await isPublicPreviewUrl(targetUrl))) {
+      return res.status(400).json({ error: 'Unsupported preview URL' });
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6500);
+    try {
+      let currentUrl = targetUrl;
+      let response: Response | null = null;
+      for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+        if (!(await isPublicPreviewUrl(currentUrl))) {
+          return res.status(400).json({ error: 'Unsupported preview redirect' });
+        }
+        response = await fetch(currentUrl, {
+          signal: controller.signal,
+          redirect: 'manual',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; DaftarLinkPreview/1.0)',
+            Accept: 'text/html,application/xhtml+xml'
+          }
+        });
+        if (response.status < 300 || response.status >= 400) break;
+        const location = response.headers.get('location');
+        if (!location || redirectCount === 3) return res.status(502).json({ error: 'Preview redirect limit reached' });
+        currentUrl = new URL(location, currentUrl);
+      }
+
+      if (!response) return res.status(502).json({ error: 'Preview source unavailable' });
+      if (!response.ok) return res.status(502).json({ error: 'Preview source unavailable' });
+      const finalUrl = currentUrl;
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+        return res.json({ url: finalUrl.toString(), title: finalUrl.hostname });
+      }
+
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      if (reader) {
+        while (totalBytes < 1_000_000) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          const remaining = 1_000_000 - totalBytes;
+          const value = chunk.value.slice(0, remaining);
+          chunks.push(value);
+          totalBytes += value.byteLength;
+          if (value.byteLength < chunk.value.byteLength) break;
+        }
+      }
+      const html = new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+      const imageValue = extractPreviewMeta(html, 'og:image')
+        || extractPreviewMeta(html, 'og:image:url')
+        || extractPreviewMeta(html, 'twitter:image');
+      let image = '';
+      if (imageValue) {
+        try {
+          const imageUrl = new URL(imageValue, targetUrl);
+          if (['http:', 'https:'].includes(imageUrl.protocol) && !isUnsafePreviewHost(imageUrl.hostname)) image = imageUrl.toString();
+        } catch {
+          image = '';
+        }
+      }
+
+      return res.json({
+        url: finalUrl.toString(),
+        title: extractPreviewMeta(html, 'og:title') || extractPreviewMeta(html, 'twitter:title') || finalUrl.hostname,
+        description: extractPreviewMeta(html, 'og:description') || extractPreviewMeta(html, 'description') || extractPreviewMeta(html, 'twitter:description'),
+        image
+      });
+    } catch (err) {
+      console.warn('[Link Preview] Failed to fetch metadata:', err);
+      return res.json({ url: targetUrl.toString(), title: targetUrl.hostname });
+    } finally {
+      clearTimeout(timer);
+    }
+  });
 
   // Helper function to resolve YouTube Channel ID and canonical info
   async function resolveChannelInfo(inputUrl: string, inputName: string) {
