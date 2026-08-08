@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SearchResultItem, ChannelItem, PlaylistItem, Language, ThemeMode, ColorTag, FavoriteFolder } from '../types';
+import { SearchResultItem, ChannelItem, PlaylistItem, Language, ThemeMode, ColorTag, FavoriteFolder, FavoriteItemType, TrashedFavorite } from '../types';
 import { t } from '../utils/translations';
 import { BeforeInstallPromptEvent, clearDeferredInstallPrompt, getDeferredInstallPrompt } from '../pwa';
 import {
@@ -9,6 +9,9 @@ import {
   syncFavoriteFolders,
   saveFavoriteFolderToFirestore,
   deleteFavoriteFolderFromFirestore,
+  syncFavoriteTrash,
+  saveFavoriteToTrash,
+  deleteFavoriteFromTrash,
   syncCollectionFolders,
   saveCollectionFolderToFirestore,
   deleteCollectionFolderFromFirestore
@@ -65,7 +68,8 @@ import {
   Maximize2,
   PictureInPicture2,
   Shrink,
-  Expand
+  Expand,
+  Undo2
 } from 'lucide-react';
 
 const SERVER_SEARCH_TIMEOUT_MS = 12_000;
@@ -176,7 +180,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   const [channels, setChannels] = useState<ChannelItem[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'search' | 'collections' | 'favorites' | 'history' | 'settings'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'collections' | 'favorites' | 'trash' | 'history' | 'settings'>('search');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [pwaInstalled, setPwaInstalled] = useState(false);
@@ -206,6 +210,16 @@ export const YTLinkerOps: React.FC<Props> = ({
     try {
       const saved = localStorage.getItem('yt_linker_fav_playlists');
       return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+  const [trashedFavorites, setTrashedFavorites] = useState<TrashedFavorite[]>(() => {
+    try {
+      const saved = localStorage.getItem('yt_linker_favorite_trash');
+      const parsed = saved ? JSON.parse(saved) as TrashedFavorite[] : [];
+      return parsed.filter((entry) => new Date(entry.expiresAt).getTime() > Date.now());
     } catch {
       return [];
     }
@@ -282,6 +296,24 @@ export const YTLinkerOps: React.FC<Props> = ({
     localStorage.setItem('yt_linker_fav_playlists', JSON.stringify(favoritePlaylists));
   }, [favoritePlaylists]);
 
+  useEffect(() => {
+    localStorage.setItem('yt_linker_favorite_trash', JSON.stringify(trashedFavorites));
+  }, [trashedFavorites]);
+
+  useEffect(() => {
+    const removeExpiredTrash = () => {
+      const now = Date.now();
+      setTrashedFavorites((prev) => {
+        const expired = prev.filter((entry) => new Date(entry.expiresAt).getTime() <= now);
+        expired.forEach((entry) => deleteFavoriteFromTrash(entry.id));
+        return expired.length > 0 ? prev.filter((entry) => new Date(entry.expiresAt).getTime() > now) : prev;
+      });
+    };
+    removeExpiredTrash();
+    const timer = window.setInterval(removeExpiredTrash, 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   // Sync with Cloud Firestore
   useEffect(() => {
     const unsubscribe = syncFirestoreFavorites(({ videos, channels, playlists }) => {
@@ -292,15 +324,63 @@ export const YTLinkerOps: React.FC<Props> = ({
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = syncFavoriteTrash((items) => {
+      if (items.length > 0) setTrashedFavorites(items as TrashedFavorite[]);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const favoriteIdentity = (item: { id?: string; url?: string }) => item.id || item.url || '';
+
+  const removeFromTrashForItem = (item: { id?: string; url?: string }, type: FavoriteItemType) => {
+    const trashId = `trash-${type}-${favoriteIdentity(item)}`.replace(/[\/\.#$\[\]]/g, '_');
+    setTrashedFavorites((prev) => prev.filter((entry) => entry.id !== trashId));
+    deleteFavoriteFromTrash(trashId);
+  };
+
+  const moveFavoriteToTrash = (item: SearchResultItem | ChannelItem | PlaylistItem, type: FavoriteItemType) => {
+    const identity = favoriteIdentity(item);
+    const now = new Date();
+    const trashItem: TrashedFavorite = {
+      id: `trash-${type}-${identity}`.replace(/[\/\.#$\[\]]/g, '_'),
+      type,
+      item: { ...item, isFavorite: false } as TrashedFavorite['item'],
+      deletedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + TRASH_RETENTION_MS).toISOString()
+    };
+    setTrashedFavorites((prev) => [trashItem, ...prev.filter((entry) => entry.id !== trashItem.id)]);
+    saveFavoriteToTrash(trashItem);
+    removeFavoriteFromFirestore(identity);
+  };
+
+  const restoreFromTrash = (entry: TrashedFavorite) => {
+    const restoredItem = { ...entry.item, isFavorite: true };
+    if (entry.type === 'video') setFavoriteVideos((prev) => [restoredItem as SearchResultItem, ...prev.filter((item) => favoriteIdentity(item) !== favoriteIdentity(entry.item))]);
+    if (entry.type === 'channel') setFavoriteChannels((prev) => [restoredItem as ChannelItem, ...prev.filter((item) => favoriteIdentity(item) !== favoriteIdentity(entry.item))]);
+    if (entry.type === 'playlist') setFavoritePlaylists((prev) => [restoredItem as PlaylistItem, ...prev.filter((item) => favoriteIdentity(item) !== favoriteIdentity(entry.item))]);
+    saveFavoriteToFirestore(restoredItem, entry.type);
+    setTrashedFavorites((prev) => prev.filter((item) => item.id !== entry.id));
+    deleteFavoriteFromTrash(entry.id);
+    showToast('تم استرجاع العنصر إلى المفضلة ⭐');
+  };
+
+  const permanentlyDeleteTrash = (entry: TrashedFavorite) => {
+    setTrashedFavorites((prev) => prev.filter((item) => item.id !== entry.id));
+    deleteFavoriteFromTrash(entry.id);
+    showToast('تم حذف العنصر نهائيًا');
+  };
+
   const handleToggleFavoriteVideo = (video: SearchResultItem) => {
     const exists = favoriteVideos.some((v) => v.id === video.id || v.url === video.url);
     if (exists) {
       setFavoriteVideos((prev) => prev.filter((v) => v.id !== video.id && v.url !== video.url));
-      removeFavoriteFromFirestore(video.id || video.url);
-      showToast(lang === 'ar' ? 'تمت إزالة الفيديو من المفضلة (Cloud Firestore)' : 'Removed from favorites (Firestore)');
+      moveFavoriteToTrash(video, 'video');
+      showToast(lang === 'ar' ? 'نُقل الفيديو إلى سلة المهملات لمدة 30 يومًا' : 'Video moved to trash for 30 days');
     } else {
       const updated = { ...video, isFavorite: true };
       setFavoriteVideos((prev) => [updated, ...prev]);
+      removeFromTrashForItem(video, 'video');
       saveFavoriteToFirestore(updated, 'video');
       showToast(lang === 'ar' ? 'تمت حفظ الفيديو بـ Cloud Firestore ⭐' : 'Saved to Cloud Firestore ⭐');
     }
@@ -325,11 +405,12 @@ export const YTLinkerOps: React.FC<Props> = ({
     const exists = favoriteChannels.some((c) => c.id === channel.id || c.url === channel.url);
     if (exists) {
       setFavoriteChannels((prev) => prev.filter((c) => c.id !== channel.id && c.url !== channel.url));
-      removeFavoriteFromFirestore(channel.id || channel.url);
-      showToast(lang === 'ar' ? 'تمت إزالة القناة من المفضلة (Cloud Firestore)' : 'Removed channel from favorites');
+      moveFavoriteToTrash(channel, 'channel');
+      showToast(lang === 'ar' ? 'نُقلت القناة إلى سلة المهملات لمدة 30 يومًا' : 'Channel moved to trash for 30 days');
     } else {
       const updated = { ...channel, isFavorite: true };
       setFavoriteChannels((prev) => [updated, ...prev]);
+      removeFromTrashForItem(channel, 'channel');
       saveFavoriteToFirestore(updated, 'channel');
       showToast(lang === 'ar' ? 'تمت حفظ القناة بـ Cloud Firestore ⭐' : 'Saved channel to Cloud Firestore ⭐');
     }
@@ -339,11 +420,12 @@ export const YTLinkerOps: React.FC<Props> = ({
     const exists = favoritePlaylists.some((p) => p.id === playlist.id || p.url === playlist.url);
     if (exists) {
       setFavoritePlaylists((prev) => prev.filter((p) => p.id !== playlist.id && p.url !== playlist.url));
-      removeFavoriteFromFirestore(playlist.id || playlist.url);
-      showToast(lang === 'ar' ? 'تمت إزالة قائمة التشغيل من المفضلة (Cloud Firestore)' : 'Removed playlist from favorites');
+      moveFavoriteToTrash(playlist, 'playlist');
+      showToast(lang === 'ar' ? 'نُقلت قائمة التشغيل إلى سلة المهملات لمدة 30 يومًا' : 'Playlist moved to trash for 30 days');
     } else {
       const updated = { ...playlist, isFavorite: true };
       setFavoritePlaylists((prev) => [updated, ...prev]);
+      removeFromTrashForItem(playlist, 'playlist');
       saveFavoriteToFirestore(updated, 'playlist');
       showToast(lang === 'ar' ? 'تمت حفظ قائمة التشغيل بـ Cloud Firestore ⭐' : 'Saved playlist to Cloud Firestore ⭐');
     }
@@ -392,7 +474,7 @@ export const YTLinkerOps: React.FC<Props> = ({
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
   };
 
-  const handleSelectTab = (tab: 'search' | 'collections' | 'favorites' | 'history' | 'settings') => {
+  const handleSelectTab = (tab: 'search' | 'collections' | 'favorites' | 'trash' | 'history' | 'settings') => {
     setActiveTab(tab);
     setSidebarOpen(false);
   };
@@ -1959,6 +2041,27 @@ export const YTLinkerOps: React.FC<Props> = ({
             <span>{t(lang, 'historyTab')}</span>
           </button>
 
+          <button
+            onClick={() => { setActiveTab('trash'); setSidebarOpen(false); }}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'trash'
+                ? isLight
+                  ? 'bg-[#205100] text-white shadow-sm'
+                  : 'bg-sky-500 text-slate-950 font-bold shadow-md'
+                : 'hover:bg-black/5 dark:hover:bg-white/5 opacity-80'
+            }`}
+            title="سلة المهملات"
+            aria-label="سلة المهملات"
+          >
+            <div className="flex items-center gap-3">
+              <Trash2 className="w-4 h-4" />
+              <span>المهملات</span>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full font-bold font-mono bg-rose-500/20 text-rose-400">
+              {trashedFavorites.length}
+            </span>
+          </button>
+
           </div>
 
           <div className="desktop-sidebar-group">
@@ -2152,6 +2255,17 @@ export const YTLinkerOps: React.FC<Props> = ({
                   <Star className={`w-4 h-4 ${activeTab === 'favorites' ? 'fill-current' : ''}`} />
                   <span>المفضلة</span>
                   <b className="mobile-quick-nav-count">{favoriteVideos.length + favoriteChannels.length + favoritePlaylists.length}</b>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('trash')}
+                  className={`mobile-quick-nav-item ${activeTab === 'trash' ? 'is-active' : ''}`}
+                  title="سلة المهملات"
+                  aria-label="سلة المهملات"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>المهملات</span>
+                  <b className="mobile-quick-nav-count">{trashedFavorites.length}</b>
                 </button>
                 <button
                   type="button"
@@ -3800,6 +3914,82 @@ export const YTLinkerOps: React.FC<Props> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Trash Tab */}
+          {activeTab === 'trash' && (
+            <div className="space-y-5">
+              <div className={`rounded-xl border p-5 flex flex-wrap items-center justify-between gap-3 ${isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'}`}>
+                <div>
+                  <h3 className="font-bold text-lg flex items-center gap-2">
+                    <Trash2 className="w-5 h-5 text-rose-400" />
+                    <span>سلة المهملات</span>
+                  </h3>
+                  <p className="text-xs opacity-70 mt-1">العناصر المحذوفة من المفضلة تبقى 30 يومًا قبل الحذف النهائي.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={trashedFavorites.length === 0}
+                  onClick={() => trashedFavorites.forEach(permanentlyDeleteTrash)}
+                  className="px-3 py-2 rounded-lg text-xs font-bold border border-rose-400/40 text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  إفراغ السلة
+                </button>
+              </div>
+
+              {trashedFavorites.length === 0 ? (
+                <div className={`p-12 text-center rounded-2xl border opacity-70 ${isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'}`}>
+                  <Trash2 className="w-12 h-12 mx-auto mb-3 opacity-30 text-rose-400" />
+                  <p className="text-sm font-bold">سلة المهملات فارغة</p>
+                  <p className="text-xs opacity-70 mt-1">عند إزالة فيديو أو قناة أو قائمة تشغيل من المفضلة ستجدها هنا.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {trashedFavorites.map((entry) => {
+                    const item = entry.item;
+                    const title = entry.type === 'channel'
+                      ? (item as ChannelItem).name
+                      : (item as SearchResultItem | PlaylistItem).title;
+                    const thumbnail = entry.type === 'channel'
+                      ? (item as ChannelItem).avatar
+                      : (item as SearchResultItem | PlaylistItem).thumbnail;
+                    const typeLabel = entry.type === 'video' ? 'فيديو' : entry.type === 'channel' ? 'قناة' : 'قائمة تشغيل';
+                    const remainingDays = Math.max(0, Math.ceil((new Date(entry.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+
+                    return (
+                      <article key={entry.id} className={`rounded-xl border p-3.5 ${isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'}`}>
+                        <div className="flex items-start gap-3">
+                          <img src={thumbnail} alt={title} className={`w-20 h-14 object-cover rounded-lg shrink-0 ${entry.type === 'channel' ? 'rounded-full' : ''}`} />
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-bold text-sm line-clamp-2">{title}</h4>
+                            <p className="text-[11px] opacity-65 mt-1">{typeLabel} · متبقٍ {remainingDays} يومًا</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-black/5 dark:border-white/5 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => restoreFromTrash(entry)}
+                            className="flex-1 px-2.5 py-2 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20 flex items-center justify-center gap-1.5"
+                          >
+                            <Undo2 className="w-3.5 h-3.5" />
+                            استرجاع
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => permanentlyDeleteTrash(entry)}
+                            className="px-2.5 py-2 rounded-lg text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20"
+                            title="حذف نهائيًا"
+                            aria-label={`حذف ${title} نهائيًا`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </div>

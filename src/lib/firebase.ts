@@ -99,6 +99,43 @@ export const removeFavoriteFromFirestore = async (idOrUrl: string) => {
   }
 };
 
+export const syncFavoriteTrash = (onUpdate: (items: any[]) => void) => {
+  try {
+    return onSnapshot(
+      query(collection(db, 'favoriteTrash')),
+      (snapshot) => {
+        const items: any[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data()));
+        onUpdate(items);
+      },
+      (error) => console.warn('Firestore favoriteTrash snapshot error:', error)
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to Firestore favorite trash:', err);
+    return () => {};
+  }
+};
+
+export const saveFavoriteToTrash = async (item: any) => {
+  try {
+    const docId = String(item.id).replace(/[\/\.#$\[\]]/g, '_');
+    await setDoc(doc(db, 'favoriteTrash', docId), {
+      ...item,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error saving favorite to trash:', err);
+  }
+};
+
+export const deleteFavoriteFromTrash = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'favoriteTrash', id));
+  } catch (err) {
+    console.error('Error deleting favorite from trash:', err);
+  }
+};
+
 // Favorite Folders (multiple named folders inside Favorites, distinct from
 // the general "Collections" feature)
 export const syncFavoriteFolders = (

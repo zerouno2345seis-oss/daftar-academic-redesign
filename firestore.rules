@@ -23,6 +23,10 @@ service cloud.firestore {
       allow read, write: if isOwner();
     }
 
+    match /favoriteTrash/{docId} {
+      allow read, write: if isOwner();
+    }
+
     match /collections/{docId} {
       allow read, write: if isOwner();
     }

@@ -49,6 +49,16 @@ export interface PlaylistItem {
   isFavorite?: boolean;
 }
 
+export type FavoriteItemType = 'video' | 'channel' | 'playlist';
+
+export interface TrashedFavorite {
+  id: string;
+  type: FavoriteItemType;
+  item: SearchResultItem | ChannelItem | PlaylistItem;
+  deletedAt: string;
+  expiresAt: string;
+}
+
 export interface CollectionFolder {
   id: string;
   name: string;
