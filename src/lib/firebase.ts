@@ -140,3 +140,44 @@ export const deleteFavoriteFolderFromFirestore = async (id: string) => {
     console.error('Error deleting favorite folder from Firestore:', err);
   }
 };
+
+// Collection folders contain the full list of saved items in each folder.
+// Keeping them in their own collection makes folder structure and membership
+// available on every signed-in device, just like individual favorites.
+export const syncCollectionFolders = (onUpdate: (folders: any[]) => void) => {
+  try {
+    return onSnapshot(
+      query(collection(db, 'collections')),
+      (snapshot) => {
+        const folders: any[] = [];
+        snapshot.forEach((docSnap) => folders.push(docSnap.data()));
+        onUpdate(folders);
+      },
+      (error) => {
+        console.warn('Firestore collections listener error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to Firestore collections:', err);
+    return () => {};
+  }
+};
+
+export const saveCollectionFolderToFirestore = async (folder: any) => {
+  try {
+    await setDoc(doc(db, 'collections', folder.id), {
+      ...folder,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error saving collection folder to Firestore:', err);
+  }
+};
+
+export const deleteCollectionFolderFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'collections', id));
+  } catch (err) {
+    console.error('Error deleting collection folder from Firestore:', err);
+  }
+};

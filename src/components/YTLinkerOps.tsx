@@ -8,7 +8,10 @@ import {
   removeFavoriteFromFirestore,
   syncFavoriteFolders,
   saveFavoriteFolderToFirestore,
-  deleteFavoriteFolderFromFirestore
+  deleteFavoriteFolderFromFirestore,
+  syncCollectionFolders,
+  saveCollectionFolderToFirestore,
+  deleteCollectionFolderFromFirestore
 } from '../lib/firebase';
 import {
   Search,
@@ -61,6 +64,27 @@ import {
 } from 'lucide-react';
 
 const SERVER_SEARCH_TIMEOUT_MS = 12_000;
+
+const createStableSharedId = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return `shared-${Math.abs(hash)}`;
+};
+
+const extractSharedUrl = (value: string) => {
+  const match = value.match(/https?:\/\/[^\s<>"']+/i);
+  return match?.[0].replace(/[),.;!?]+$/, '') || '';
+};
+
+const getSharedUrlHost = (value: string) => {
+  try {
+    return new URL(value).hostname.replace(/^www\./i, '');
+  } catch {
+    return 'رابط مشترك';
+  }
+};
 
 /**
  * Copy a list of links as real line-separated plain text.
@@ -163,6 +187,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       return [];
     }
   });
+  const sharedLinkHandledRef = useRef(false);
 
   const [favoritesFilter, setFavoritesFilter] = useState<'all' | 'videos' | 'channels' | 'playlists'>('all');
 
@@ -205,8 +230,10 @@ export const YTLinkerOps: React.FC<Props> = ({
   };
 
   const handleDeleteFavoriteFolder = (folderId: string) => {
+    const affectedVideos = favoriteVideos.filter((video) => video.folderId === folderId);
     setFavoriteFolders((prev) => prev.filter((f) => f.id !== folderId));
     setFavoriteVideos((prev) => prev.map((v) => (v.folderId === folderId ? { ...v, folderId: undefined } : v)));
+    affectedVideos.forEach((video) => saveFavoriteToFirestore({ ...video, folderId: undefined }, 'video'));
     deleteFavoriteFolderFromFirestore(folderId);
     if (activeFavoriteFolderId === folderId) setActiveFavoriteFolderId('all');
     showToast('تم حذف المجلد (بقيت الفيديوهات في المفضلة العامة)');
@@ -850,7 +877,34 @@ export const YTLinkerOps: React.FC<Props> = ({
   const [displayedChannelVideosCount, setDisplayedChannelVideosCount] = useState(20);
 
   // Collections state (Folders)
-  const [collectionFolders, setCollectionFolders] = useState<CollectionFolder[]>([]);
+  const [collectionFolders, setCollectionFolders] = useState<CollectionFolder[]>(() => {
+    try {
+      const saved = localStorage.getItem('yt_linker_collection_folders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const collectionFoldersRef = useRef<CollectionFolder[]>(collectionFolders);
+  useEffect(() => {
+    collectionFoldersRef.current = collectionFolders;
+    localStorage.setItem('yt_linker_collection_folders', JSON.stringify(collectionFolders));
+  }, [collectionFolders]);
+
+  useEffect(() => {
+    const unsubscribe = syncCollectionFolders((folders) => {
+      const remoteFolders = folders as CollectionFolder[];
+      if (remoteFolders.length > 0) {
+        const remoteIds = new Set(remoteFolders.map((folder) => folder.id));
+        const localOnly = collectionFoldersRef.current.filter((folder) => !remoteIds.has(folder.id));
+        localOnly.forEach((folder) => saveCollectionFolderToFirestore(folder));
+        setCollectionFolders([...localOnly, ...remoteFolders]);
+      } else {
+        collectionFoldersRef.current.forEach((folder) => saveCollectionFolderToFirestore(folder));
+      }
+    });
+    return () => unsubscribe();
+  }, []);
   const [showSaveFolderModal, setShowSaveFolderModal] = useState(false);
   const [targetFolderItems, setTargetFolderItems] = useState<SearchResultItem[]>([]);
   const [folderNameInput, setFolderNameInput] = useState('');
@@ -870,6 +924,46 @@ export const YTLinkerOps: React.FC<Props> = ({
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  // Web Share Target: Android/iOS can send a link directly to the installed
+  // PWA. The manifest sends title, text and url as query parameters; URLs in
+  // the shared text are supported too for apps that only provide a text field.
+  useEffect(() => {
+    if (sharedLinkHandledRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const rawUrl = (params.get('url') || '').trim();
+    const sharedText = (params.get('text') || '').trim();
+    const sharedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : extractSharedUrl(sharedText);
+    if (!sharedUrl || !/^https?:\/\//i.test(sharedUrl)) return;
+
+    sharedLinkHandledRef.current = true;
+    const title = (params.get('title') || '').trim() || getSharedUrlHost(sharedUrl);
+    const sharedItem: SearchResultItem = {
+      id: createStableSharedId(sharedUrl),
+      title,
+      duration: 'N/A',
+      url: sharedUrl,
+      thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=500&auto=format&fit=crop&q=60',
+      thumbnailAlt: title,
+      selected: true,
+      channelTitle: getSharedUrlHost(sharedUrl),
+      publishedAt: new Date().toLocaleDateString('ar-EG'),
+      isFavorite: true
+    };
+
+    const alreadySaved = favoriteVideos.some((video) => video.url === sharedUrl || video.id === sharedItem.id);
+    if (!alreadySaved) {
+      setFavoriteVideos((prev) => [sharedItem, ...prev]);
+      saveFavoriteToFirestore(sharedItem, 'video');
+      showToast('تمت إضافة الرابط المشترك إلى المفضلة ⭐');
+    } else {
+      showToast('الرابط المشترك موجود مسبقًا في المفضلة');
+    }
+    setActiveTab('favorites');
+    setFavoritesFilter('videos');
+    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash}`);
+  }, [favoriteVideos]);
 
   useEffect(() => {
     const standaloneMedia = window.matchMedia('(display-mode: standalone)');
@@ -1554,6 +1648,7 @@ export const YTLinkerOps: React.FC<Props> = ({
         items: targetFolderItems
       };
       setCollectionFolders((prev) => [newFolder, ...prev]);
+      saveCollectionFolderToFirestore(newFolder);
       setExpandedFolderIds((prev) => new Set(prev).add(newFolder.id));
       showToast(
         lang === 'ar'
@@ -1562,19 +1657,14 @@ export const YTLinkerOps: React.FC<Props> = ({
       );
       setHistoryLogs((prev) => [`Saved ${targetFolderItems.length} videos to folder "${finalName}"`, ...prev]);
     } else {
-      setCollectionFolders((prev) =>
-        prev.map((f) => {
-          if (f.id === selectedExistingFolderId) {
-            const existingIds = new Set(f.items.map((i) => i.id));
-            const newVids = targetFolderItems.filter((i) => !existingIds.has(i.id));
-            return {
-              ...f,
-              items: [...f.items, ...newVids]
-            };
-          }
-          return f;
-        })
-      );
+      const existingFolder = collectionFolders.find((folder) => folder.id === selectedExistingFolderId);
+      if (existingFolder) {
+        const existingIds = new Set(existingFolder.items.map((item) => item.id));
+        const newVids = targetFolderItems.filter((item) => !existingIds.has(item.id));
+        const updatedFolder = { ...existingFolder, items: [...existingFolder.items, ...newVids] };
+        setCollectionFolders((prev) => prev.map((folder) => folder.id === updatedFolder.id ? updatedFolder : folder));
+        saveCollectionFolderToFirestore(updatedFolder);
+      }
       showToast(lang === 'ar' ? `تمت إضافة الفيديوهات للمجلد المSelected!` : `Added videos to existing folder!`);
       setHistoryLogs((prev) => [`Added ${targetFolderItems.length} videos to existing folder`, ...prev]);
     }
@@ -1596,6 +1686,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
   const handleDeleteFolder = (folderId: string) => {
     setCollectionFolders((prev) => prev.filter((f) => f.id !== folderId));
+    deleteCollectionFolderFromFirestore(folderId);
     showToast(lang === 'ar' ? 'تم حذف المجلد بنجاح' : 'Folder deleted');
   };
 
@@ -1613,17 +1704,12 @@ export const YTLinkerOps: React.FC<Props> = ({
   };
 
   const handleRemoveItemFromFolder = (folderId: string, itemId: string) => {
-    setCollectionFolders((prev) =>
-      prev.map((f) => {
-        if (f.id === folderId) {
-          return {
-            ...f,
-            items: f.items.filter((i) => i.id !== itemId)
-          };
-        }
-        return f;
-      })
-    );
+    const folder = collectionFolders.find((item) => item.id === folderId);
+    if (folder) {
+      const updatedFolder = { ...folder, items: folder.items.filter((item) => item.id !== itemId) };
+      setCollectionFolders((prev) => prev.map((item) => item.id === folderId ? updatedFolder : item));
+      saveCollectionFolderToFirestore(updatedFolder);
+    }
     showToast(lang === 'ar' ? 'تمت إزالة الفيديو من المجلد' : 'Video removed from folder');
   };
 

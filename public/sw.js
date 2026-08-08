@@ -1,4 +1,4 @@
-const CACHE_NAME = 'yt-academic-shell-v1';
+const CACHE_NAME = 'yt-academic-shell-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
