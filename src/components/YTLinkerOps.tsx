@@ -121,6 +121,18 @@ const extractYouTubeVideoId = (value: string) => {
   }
 };
 
+const isFacebookLink = (value: string) => {
+  try {
+    const host = new URL(value).hostname.replace(/^www\./i, '').toLowerCase();
+    return host === 'facebook.com' || host.endsWith('.facebook.com') || host === 'fb.watch';
+  } catch {
+    return false;
+  }
+};
+
+const getFacebookEmbedUrl = (value: string) =>
+  `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(value)}&show_text=false&width=560`;
+
 const upsertFavoriteVideo = (videos: SearchResultItem[], item: SearchResultItem) => {
   const existingIndex = videos.findIndex((video) => video.id === item.id || video.url === item.url);
   if (existingIndex < 0) return [item, ...videos];
@@ -628,6 +640,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
   // Video Preview Modal
   const [previewVideo, setPreviewVideo] = useState<SearchResultItem | null>(null);
+  const [externalPreview, setExternalPreview] = useState<SearchResultItem | null>(null);
 
   // Playback queue (playlist behind the preview player) + player UI state
   const [playerQueue, setPlayerQueue] = useState<SearchResultItem[]>([]);
@@ -666,8 +679,8 @@ export const YTLinkerOps: React.FC<Props> = ({
     // mixed favorites list contains YouTube and non-YouTube links, filtering
     // first would shift the index and open an unrelated older video.
     if (requestedVideo && !requestedYouTubeId && openExternalRequested) {
-      window.open(requestedVideo.url, '_blank', 'noopener,noreferrer');
-      showToast(lang === 'ar' ? 'هذا الرابط خارجي، تم فتحه في نافذة جديدة' : 'External link opened in a new window');
+      setPreviewVideo(null);
+      setExternalPreview(requestedVideo);
       return;
     }
 
@@ -675,10 +688,10 @@ export const YTLinkerOps: React.FC<Props> = ({
       .filter((v) => v && (extractYouTubeVideoId(v.url) || /^[A-Za-z0-9_-]{11}$/.test(v.id)))
       .map((v) => ({ ...v, id: extractYouTubeVideoId(v.url) || v.id }));
     if (valid.length === 0) {
-      const externalLink = videos.find((v) => v?.url)?.url;
-      if (externalLink) {
-        window.open(externalLink, '_blank', 'noopener,noreferrer');
-        showToast(lang === 'ar' ? 'هذا الرابط خارجي، تم فتحه في نافذة جديدة' : 'External link opened in a new window');
+      const externalItem = videos.find((v) => v?.url);
+      if (externalItem) {
+        setPreviewVideo(null);
+        setExternalPreview(externalItem);
       } else {
         showToast(lang === 'ar' ? 'لا توجد فيديوهات صالحة للتشغيل في هذه القائمة' : 'No playable videos in this list');
       }
@@ -1171,10 +1184,11 @@ export const YTLinkerOps: React.FC<Props> = ({
     // articles, and other non-YouTube pages) receive their real thumbnail.
     void fetch(`/api/link-preview?url=${encodeURIComponent(sharedUrl)}`)
       .then((response) => response.ok ? response.json() : null)
-      .then((preview: { title?: string; description?: string; image?: string } | null) => {
+      .then((preview: { url?: string; title?: string; description?: string; image?: string } | null) => {
         if (!preview || (!preview.title && !preview.description && !preview.image)) return;
         const updatedItem: SearchResultItem = {
           ...sharedItem,
+          url: preview.url || sharedItem.url,
           title: preview.title || sharedItem.title,
           thumbnail: preview.image || sharedItem.thumbnail,
           thumbnailAlt: preview.title || sharedItem.thumbnailAlt,
@@ -4750,6 +4764,65 @@ export const YTLinkerOps: React.FC<Props> = ({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Inline preview for Facebook and other external links */}
+        {externalPreview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto">
+            <div className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden ${
+              isLight ? 'bg-white border-[#c1c9b6] text-black' : 'bg-[#141c2e] border-white/10 text-white'
+            }`}>
+              <div className="p-4 border-b border-black/10 dark:border-white/10 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-sky-400 font-bold mb-1">معاينة داخل التطبيق</p>
+                  <h3 className="font-bold text-sm truncate">{externalPreview.title}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExternalPreview(null)}
+                  className="p-1.5 rounded-lg opacity-70 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10"
+                  title={t(lang, 'close')}
+                  aria-label={t(lang, 'close')}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="aspect-video bg-black">
+                {isFacebookLink(externalPreview.url) ? (
+                  <iframe
+                    src={getFacebookEmbedUrl(externalPreview.url)}
+                    title={`معاينة فيسبوك: ${externalPreview.title}`}
+                    className="w-full h-full border-0"
+                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ) : (
+                  <img src={externalPreview.thumbnail} alt={externalPreview.thumbnailAlt} className="w-full h-full object-contain" />
+                )}
+              </div>
+
+              <div className="p-4 space-y-3">
+                {externalPreview.description && (
+                  <p className="text-xs opacity-75 leading-relaxed line-clamp-4">{externalPreview.description}</p>
+                )}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[11px] opacity-60 truncate max-w-[60%]">{getSharedUrlHost(externalPreview.url)}</span>
+                  <a
+                    href={externalPreview.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 ${
+                      isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
+                    }`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>فتح الرابط الأصلي</span>
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         )}
