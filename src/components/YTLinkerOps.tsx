@@ -73,6 +73,7 @@ import {
 } from 'lucide-react';
 
 const SERVER_SEARCH_TIMEOUT_MS = 12_000;
+const SEARCH_PAGE_SIZE = 50;
 
 const createStableSharedId = (value: string) => {
   let hash = 0;
@@ -1080,9 +1081,10 @@ export const YTLinkerOps: React.FC<Props> = ({
   };
 
   // Pagination & Load More states
-  const [displayedSearchCount, setDisplayedSearchCount] = useState(20);
+  const [displayedSearchCount, setDisplayedSearchCount] = useState(SEARCH_PAGE_SIZE);
   const [searchPage, setSearchPage] = useState(1);
   const [loadingMoreSearch, setLoadingMoreSearch] = useState(false);
+  const [hasMoreSearchResults, setHasMoreSearchResults] = useState(true);
 
   const [displayedChannelVideosCount, setDisplayedChannelVideosCount] = useState(20);
 
@@ -1479,38 +1481,67 @@ export const YTLinkerOps: React.FC<Props> = ({
   const performYouTubeSearch = async (searchQuery: string) => {
     if (!searchQuery.trim()) return;
     setLoading(true);
-    setDisplayedSearchCount(20);
+    setDisplayedSearchCount(SEARCH_PAGE_SIZE);
     setSearchPage(1);
+    setHasMoreSearchResults(true);
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), SERVER_SEARCH_TIMEOUT_MS);
+      const fetchSearchPage = async (page: number) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), SERVER_SEARCH_TIMEOUT_MS);
+        try {
+          const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&page=${page}`, {
+            signal: controller.signal
+          });
+          if (!res.ok) throw new Error(`Search request failed with status ${res.status}`);
+          return await res.json();
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
 
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&page=1`, {
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      const firstPage = await fetchSearchPage(1);
+      const videoById = new Map<string, SearchResultItem>();
+      const channelById = new Map<string, ChannelItem>();
+      let lastLoadedPage = 1;
+      const mergePage = (data: any) => {
+        const pageVideos: SearchResultItem[] = Array.isArray(data?.videos)
+          ? data.videos.map((v: any) => ({ ...v, selected: true }))
+          : [];
+        const pageChannels: ChannelItem[] = Array.isArray(data?.channels)
+          ? data.channels
+          : [];
+        pageVideos.forEach((video) => video.id && !videoById.has(video.id) && videoById.set(video.id, video));
+        pageChannels.forEach((channel) => {
+          const key = channel.url || channel.id;
+          if (key && !channelById.has(key)) channelById.set(key, channel);
+        });
+        return pageVideos.length > 0 || pageChannels.length > 0;
+      };
 
-      if (!res.ok) {
-        throw new Error(`Search request failed with status ${res.status}`);
+      const firstPageHasResults = mergePage(firstPage);
+      // Fill the first visible batch with additional continuation pages when
+      // a provider returns fewer than 50 results on its first response.
+      while (videoById.size < SEARCH_PAGE_SIZE && lastLoadedPage < 4 && firstPageHasResults) {
+        const nextPage = lastLoadedPage + 1;
+        const pageData = await fetchSearchPage(nextPage);
+        const hadResults = mergePage(pageData);
+        lastLoadedPage = nextPage;
+        if (!hadResults) break;
       }
-      const data = await res.json();
 
-      const returnedVideos: SearchResultItem[] = Array.isArray(data.videos)
-        ? data.videos.map((v: any) => ({ ...v, selected: true }))
-        : [];
-
-      const returnedChannels: ChannelItem[] = Array.isArray(data.channels)
-        ? data.channels
-        : [];
+      const returnedVideos = [...videoById.values()];
+      const returnedChannels = [...channelById.values()];
+      setSearchPage(lastLoadedPage);
 
       if (returnedVideos.length === 0 && returnedChannels.length === 0) {
         await performClientSideYouTubeSearch(searchQuery);
         return;
       }
 
-      setItems(returnedVideos);
+      setItems(returnedVideos.slice(0, SEARCH_PAGE_SIZE));
       setChannels(returnedChannels);
+      setHasMoreSearchResults(returnedVideos.length >= SEARCH_PAGE_SIZE || lastLoadedPage < 4);
 
       setHistoryLogs((prev) => [
         `Search "${searchQuery}": Extracted ${returnedVideos.length} videos & ${returnedChannels.length} channels`,
@@ -1533,7 +1564,7 @@ export const YTLinkerOps: React.FC<Props> = ({
   const handleLoadMoreSearch = async () => {
     // If there are already more un-displayed items in state, expand display limit
     if (displayedSearchCount < items.length) {
-      setDisplayedSearchCount((prev) => Math.min(prev + 20, items.length));
+      setDisplayedSearchCount((prev) => Math.min(prev + SEARCH_PAGE_SIZE, items.length));
       return;
     }
 
@@ -1543,37 +1574,57 @@ export const YTLinkerOps: React.FC<Props> = ({
       return;
     }
     setLoadingMoreSearch(true);
-    const nextPage = searchPage + 1;
     const currentQuery = query.trim();
 
     try {
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(currentQuery)}&page=${nextPage}`);
-      if (!res.ok) throw new Error('Failed to load more videos');
-      const data = await res.json();
-
-      const newVids: SearchResultItem[] = Array.isArray(data.videos)
-        ? data.videos.map((v: any) => ({ ...v, selected: true }))
-        : [];
-      const newChannels: ChannelItem[] = Array.isArray(data.channels)
-        ? data.channels
-        : [];
-
       const existingVideoIds = new Set(items.map((item) => item.id));
       const existingChannelIds = new Set(channels.map((channel) => channel.url || channel.id));
-      const addedVideos = newVids.filter((video) => !existingVideoIds.has(video.id));
-      const addedChannels = newChannels.filter((channel) => !existingChannelIds.has(channel.url || channel.id));
+      const addedVideos: SearchResultItem[] = [];
+      const addedChannels: ChannelItem[] = [];
+      let nextPage = searchPage;
+      let pagesFetched = 0;
+
+      while (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched < 4) {
+        nextPage += 1;
+        pagesFetched += 1;
+        const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(currentQuery)}&page=${nextPage}`);
+        if (!res.ok) throw new Error('Failed to load more videos');
+        const data = await res.json();
+        const newVids: SearchResultItem[] = Array.isArray(data.videos)
+          ? data.videos.map((v: any) => ({ ...v, selected: true }))
+          : [];
+        const newChannels: ChannelItem[] = Array.isArray(data.channels)
+          ? data.channels
+          : [];
+        newVids.forEach((video) => {
+          if (video.id && !existingVideoIds.has(video.id)) {
+            existingVideoIds.add(video.id);
+            addedVideos.push(video);
+          }
+        });
+        newChannels.forEach((channel) => {
+          const key = channel.url || channel.id;
+          if (key && !existingChannelIds.has(key)) {
+            existingChannelIds.add(key);
+            addedChannels.push(channel);
+          }
+        });
+        if (newVids.length === 0 && newChannels.length === 0) break;
+      }
 
       if (addedVideos.length > 0 || addedChannels.length > 0) {
-        setItems((prev) => [...prev, ...addedVideos]);
+        setItems((prev) => [...prev, ...addedVideos.slice(0, SEARCH_PAGE_SIZE)]);
         setChannels((prev) => [...prev, ...addedChannels]);
         setSearchPage(nextPage);
-        setDisplayedSearchCount((prev) => prev + 20);
+        setDisplayedSearchCount((prev) => prev + SEARCH_PAGE_SIZE);
+        if (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched >= 4) setHasMoreSearchResults(false);
         showToast(
           lang === 'ar'
             ? `تم تحميل ${addedVideos.length} فيديو و ${addedChannels.length} قناة إضافية!`
             : `Loaded ${addedVideos.length} more videos and ${addedChannels.length} more channels!`
         );
       } else {
+        setHasMoreSearchResults(false);
         showToast(lang === 'ar' ? 'لا توجد نتائج إضافية حالياً' : 'No more results available');
       }
     } catch (err) {
@@ -3068,7 +3119,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                   )}
 
                   {/* Load More Search Results Button */}
-                  {!loading && items.length > 0 && (
+                  {!loading && items.length > 0 && hasMoreSearchResults && (
                     <div className="mt-8 text-center flex flex-col items-center justify-center gap-2 border-t pt-6 border-black/10 dark:border-white/10">
                       <p className="text-xs opacity-70 font-mono">
                         {lang === 'ar'
