@@ -8,16 +8,107 @@ import ytpl from 'ytpl';
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+type CacheEntry<T> = {
+  expiresAt: number;
+  value: T;
+};
 
-// CORS middleware for Vercel and local dev
+type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
+
+const responseCache = new Map<string, CacheEntry<unknown>>();
+const rateLimitBuckets = new Map<string, RateLimitBucket>();
+const MAX_CACHE_ENTRIES = 160;
+const MAX_RATE_LIMIT_BUCKETS = 4_000;
+const SEARCH_CACHE_TTL_MS = 2 * 60 * 1000;
+const PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+const getCachedResponse = <T>(key: string): T | null => {
+  const entry = responseCache.get(key) as CacheEntry<T> | undefined;
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    responseCache.delete(key);
+    return null;
+  }
+  return entry.value;
+};
+
+const cacheResponse = <T>(key: string, value: T, ttlMs: number) => {
+  if (responseCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = responseCache.keys().next().value;
+    if (oldestKey) responseCache.delete(oldestKey);
+  }
+  responseCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+};
+
+const getClientIdentifier = (req: express.Request) => {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const forwarded = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+  return forwarded?.split(',')[0]?.trim() || req.ip || 'unknown';
+};
+
+const getRateLimitForPath = (path: string) => {
+  if (path.startsWith('/youtube/channel-') || path.startsWith('/youtube/playlist-')) return 8;
+  if (path.startsWith('/youtube/search')) return 24;
+  if (path.startsWith('/link-preview')) return 30;
+  return 60;
+};
+
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '16kb' }));
+
+// Same-origin CORS and baseline response hardening for the public API.
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.get('origin');
+  const host = req.get('host');
+  if (origin && host && (origin === `https://${host}` || origin === `http://${host}`)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('X-Content-Type-Options', 'nosniff');
+  res.header('X-Frame-Options', 'SAMEORIGIN');
+  res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
+  next();
+});
+
+app.use('/api', (req, res, next) => {
+  const clientId = getClientIdentifier(req);
+  const limit = getRateLimitForPath(req.path);
+  const key = `${req.path}:${clientId}`;
+  const now = Date.now();
+  const existing = rateLimitBuckets.get(key);
+  const bucket = !existing || existing.resetAt <= now
+    ? { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS }
+    : existing;
+
+  if (bucket.count >= limit) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many requests. Please try again shortly.' });
+  }
+
+  bucket.count += 1;
+  rateLimitBuckets.set(key, bucket);
+  res.setHeader('RateLimit-Limit', String(limit));
+  res.setHeader('RateLimit-Remaining', String(Math.max(0, limit - bucket.count)));
+
+  if (rateLimitBuckets.size > MAX_RATE_LIMIT_BUCKETS) {
+    for (const [bucketKey, value] of rateLimitBuckets) {
+      if (value.resetAt <= now) rateLimitBuckets.delete(bucketKey);
+      if (rateLimitBuckets.size <= MAX_RATE_LIMIT_BUCKETS) break;
+    }
+  }
+
   next();
 });
 
@@ -402,9 +493,35 @@ app.use((req, res, next) => {
         return res.status(400).json({ error: 'Search query must be 200 characters or fewer' });
       }
 
+      const cacheKey = `youtube-search:${query.toLocaleLowerCase('ar')}:${page}`;
+      const cached = getCachedResponse<{
+        videos: any[];
+        channels: any[];
+        totalVideos: number;
+        totalChannels: number;
+        page: number;
+        hasMore: boolean;
+      }>(cacheKey);
+      if (cached) {
+        res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120');
+        res.setHeader('X-Cache', 'HIT');
+        return res.json(cached);
+      }
+
       console.log(`[YouTube Search API] Fast Parallel Querying: "${query}", Page: ${page}`);
       const { videos, channels } = await searchYouTubeParallel(query, page);
-      return res.json({ videos, channels, totalVideos: videos.length, totalChannels: channels.length });
+      const payload = {
+        videos,
+        channels,
+        totalVideos: videos.length,
+        totalChannels: channels.length,
+        page,
+        hasMore: page < 20 && (videos.length > 0 || channels.length > 0)
+      };
+      cacheResponse(cacheKey, payload, SEARCH_CACHE_TTL_MS);
+      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120');
+      res.setHeader('X-Cache', 'MISS');
+      return res.json(payload);
     } catch (err: any) {
       console.error('[YouTube Search Error]:', err);
       const query = typeof req.query.q === 'string' ? req.query.q : 'بحث';
@@ -500,6 +617,21 @@ app.use((req, res, next) => {
       return res.status(400).json({ error: 'Unsupported preview URL' });
     }
 
+    const cacheKey = `link-preview:${targetUrl.toString()}`;
+    const cached = getCachedResponse<{ url: string; title: string; description?: string; image?: string }>(cacheKey);
+    if (cached) {
+      res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
+      res.setHeader('X-Cache', 'HIT');
+      return res.json(cached);
+    }
+
+    const sendPreview = (payload: { url: string; title: string; description?: string; image?: string }) => {
+      cacheResponse(cacheKey, payload, PREVIEW_CACHE_TTL_MS);
+      res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
+      res.setHeader('X-Cache', 'MISS');
+      return res.json(payload);
+    };
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 6500);
     try {
@@ -528,7 +660,7 @@ app.use((req, res, next) => {
       const finalUrl = currentUrl;
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
-        return res.json({ url: finalUrl.toString(), title: finalUrl.hostname });
+        return sendPreview({ url: finalUrl.toString(), title: finalUrl.hostname });
       }
 
       const reader = response.body?.getReader();
@@ -559,7 +691,7 @@ app.use((req, res, next) => {
         }
       }
 
-      return res.json({
+      return sendPreview({
         url: finalUrl.toString(),
         title: extractPreviewMeta(html, 'og:title') || extractPreviewMeta(html, 'twitter:title') || finalUrl.hostname,
         description: extractPreviewMeta(html, 'og:description') || extractPreviewMeta(html, 'description') || extractPreviewMeta(html, 'twitter:description'),
@@ -567,7 +699,7 @@ app.use((req, res, next) => {
       });
     } catch (err) {
       console.warn('[Link Preview] Failed to fetch metadata:', err);
-      return res.json({ url: targetUrl.toString(), title: targetUrl.hostname });
+      return sendPreview({ url: targetUrl.toString(), title: targetUrl.hostname });
     } finally {
       clearTimeout(timer);
     }

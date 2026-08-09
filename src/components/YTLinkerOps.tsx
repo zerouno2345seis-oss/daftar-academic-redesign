@@ -1083,8 +1083,11 @@ export const YTLinkerOps: React.FC<Props> = ({
   // Pagination & Load More states
   const [displayedSearchCount, setDisplayedSearchCount] = useState(SEARCH_PAGE_SIZE);
   const [searchPage, setSearchPage] = useState(1);
+  const [queuedSearchVideos, setQueuedSearchVideos] = useState<SearchResultItem[]>([]);
   const [loadingMoreSearch, setLoadingMoreSearch] = useState(false);
   const [hasMoreSearchResults, setHasMoreSearchResults] = useState(true);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const activeSearchControllerRef = useRef<AbortController | null>(null);
 
   const [displayedChannelVideosCount, setDisplayedChannelVideosCount] = useState(20);
 
@@ -1348,6 +1351,8 @@ export const YTLinkerOps: React.FC<Props> = ({
           publishedAt: ''
         };
         setItems([directVid]);
+        setQueuedSearchVideos([]);
+        setHasMoreSearchResults(false);
         showToast(lang === 'ar' ? 'تم استخراج الفيديو من الرابط المباشر!' : 'Extracted video from direct link!');
         return true;
       }
@@ -1443,8 +1448,10 @@ export const YTLinkerOps: React.FC<Props> = ({
         }
 
         if (returnedVideos.length > 0 || returnedChannels.length > 0) {
-          setItems(returnedVideos);
+          setItems(returnedVideos.slice(0, SEARCH_PAGE_SIZE));
+          setQueuedSearchVideos(returnedVideos.slice(SEARCH_PAGE_SIZE));
           setChannels(returnedChannels);
+          setHasMoreSearchResults(returnedVideos.length > SEARCH_PAGE_SIZE);
           setHistoryLogs((prev) => [
             `Client Search "${searchQuery}": Extracted ${returnedVideos.length} videos & ${returnedChannels.length} channels`,
             ...prev
@@ -1474,20 +1481,38 @@ export const YTLinkerOps: React.FC<Props> = ({
       publishedAt: 'الآن'
     };
     setItems([fallbackItem]);
+    setQueuedSearchVideos([]);
+    setHasMoreSearchResults(false);
     showToast(lang === 'ar' ? `تم إنشاء رابط البحث عن "${searchQuery}"` : `Created direct search link for "${searchQuery}"`);
     return true;
   };
 
+  const cancelActiveSearch = () => {
+    if (!activeSearchControllerRef.current) return;
+    activeSearchControllerRef.current.abort();
+    activeSearchControllerRef.current = null;
+    setLoading(false);
+    setLoadingMoreSearch(false);
+    showToast(lang === 'ar' ? 'تم إلغاء البحث' : 'Search cancelled');
+  };
+
+  const isAbortError = (error: unknown) =>
+    error instanceof DOMException && error.name === 'AbortError';
+
   const performYouTubeSearch = async (searchQuery: string) => {
     if (!searchQuery.trim()) return;
+    activeSearchControllerRef.current?.abort();
+    const controller = new AbortController();
+    activeSearchControllerRef.current = controller;
     setLoading(true);
     setDisplayedSearchCount(SEARCH_PAGE_SIZE);
     setSearchPage(1);
+    setQueuedSearchVideos([]);
     setHasMoreSearchResults(true);
+    setSearchError(null);
 
     try {
       const fetchSearchPage = async (page: number) => {
-        const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), SERVER_SEARCH_TIMEOUT_MS);
         try {
           const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&page=${page}`, {
@@ -1540,8 +1565,9 @@ export const YTLinkerOps: React.FC<Props> = ({
       }
 
       setItems(returnedVideos.slice(0, SEARCH_PAGE_SIZE));
+      setQueuedSearchVideos(returnedVideos.slice(SEARCH_PAGE_SIZE));
       setChannels(returnedChannels);
-      setHasMoreSearchResults(returnedVideos.length >= SEARCH_PAGE_SIZE || lastLoadedPage < 8);
+      setHasMoreSearchResults(returnedVideos.length > SEARCH_PAGE_SIZE || lastLoadedPage < 8);
 
       setHistoryLogs((prev) => [
         `Search "${searchQuery}": Extracted ${returnedVideos.length} videos & ${returnedChannels.length} channels`,
@@ -1554,9 +1580,14 @@ export const YTLinkerOps: React.FC<Props> = ({
           : `Extracted ${returnedVideos.length} videos & ${returnedChannels.length} channels!`
       );
     } catch (err: any) {
+      if (isAbortError(err)) return;
       console.warn('Backend YouTube Search Error, attempting client-side fallback:', err);
-      await performClientSideYouTubeSearch(searchQuery);
+      const fallbackSucceeded = await performClientSideYouTubeSearch(searchQuery);
+      if (!fallbackSucceeded) {
+        setSearchError(lang === 'ar' ? 'تعذر الوصول إلى نتائج YouTube. حاول مرة أخرى.' : 'Unable to reach YouTube results. Please try again.');
+      }
     } finally {
+      if (activeSearchControllerRef.current === controller) activeSearchControllerRef.current = null;
       setLoading(false);
     }
   };
@@ -1573,21 +1604,28 @@ export const YTLinkerOps: React.FC<Props> = ({
       setLoadingMoreSearch(false);
       return;
     }
+    activeSearchControllerRef.current?.abort();
+    const controller = new AbortController();
+    activeSearchControllerRef.current = controller;
     setLoadingMoreSearch(true);
+    setSearchError(null);
     const currentQuery = query.trim();
 
     try {
-      const existingVideoIds = new Set(items.map((item) => item.id));
+      const existingVideoIds = new Set([...items, ...queuedSearchVideos].map((item) => item.id));
       const existingChannelIds = new Set(channels.map((channel) => channel.url || channel.id));
-      const addedVideos: SearchResultItem[] = [];
+      const addedVideos: SearchResultItem[] = [...queuedSearchVideos];
       const addedChannels: ChannelItem[] = [];
       let nextPage = searchPage;
       let pagesFetched = 0;
+      let reachedEnd = false;
 
       while (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched < 8) {
         nextPage += 1;
         pagesFetched += 1;
-        const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(currentQuery)}&page=${nextPage}`);
+        const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(currentQuery)}&page=${nextPage}`, {
+          signal: controller.signal
+        });
         if (!res.ok) throw new Error('Failed to load more videos');
         const data = await res.json();
         const newVids: SearchResultItem[] = Array.isArray(data.videos)
@@ -1609,28 +1647,36 @@ export const YTLinkerOps: React.FC<Props> = ({
             addedChannels.push(channel);
           }
         });
+        if (data.hasMore === false) reachedEnd = true;
         if (newVids.length === 0 && newChannels.length === 0) break;
       }
 
       if (addedVideos.length > 0 || addedChannels.length > 0) {
-        setItems((prev) => [...prev, ...addedVideos.slice(0, SEARCH_PAGE_SIZE)]);
+        const visibleVideos = addedVideos.slice(0, SEARCH_PAGE_SIZE);
+        const remainingVideos = addedVideos.slice(SEARCH_PAGE_SIZE);
+        setItems((prev) => [...prev, ...visibleVideos]);
+        setQueuedSearchVideos(remainingVideos);
         setChannels((prev) => [...prev, ...addedChannels]);
         setSearchPage(nextPage);
-        setDisplayedSearchCount((prev) => prev + SEARCH_PAGE_SIZE);
-        if (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched >= 8) setHasMoreSearchResults(false);
+        setDisplayedSearchCount((prev) => prev + visibleVideos.length);
+        setHasMoreSearchResults(remainingVideos.length > 0 || (!reachedEnd && nextPage < 20));
         showToast(
           lang === 'ar'
-            ? `تم تحميل ${addedVideos.length} فيديو و ${addedChannels.length} قناة إضافية!`
-            : `Loaded ${addedVideos.length} more videos and ${addedChannels.length} more channels!`
+            ? `تم تحميل ${visibleVideos.length} فيديو و ${addedChannels.length} قناة إضافية!`
+            : `Loaded ${visibleVideos.length} more videos and ${addedChannels.length} more channels!`
         );
       } else {
+        setQueuedSearchVideos([]);
         setHasMoreSearchResults(false);
         showToast(lang === 'ar' ? 'لا توجد نتائج إضافية حالياً' : 'No more results available');
       }
     } catch (err) {
+      if (isAbortError(err)) return;
       console.error('Load more search error:', err);
+      setSearchError(lang === 'ar' ? 'تعذر جلب الدفعة التالية من النتائج. حاول مرة أخرى.' : 'Unable to load the next results batch. Please try again.');
       showToast(lang === 'ar' ? 'تعذر جلب المزيد من النتائج' : 'Failed to load more results');
     } finally {
+      if (activeSearchControllerRef.current === controller) activeSearchControllerRef.current = null;
       setLoadingMoreSearch(false);
     }
   };
@@ -2325,6 +2371,19 @@ export const YTLinkerOps: React.FC<Props> = ({
                       </>
                     )}
                   </button>
+                  {loading && (
+                    <button
+                      type="button"
+                      onClick={cancelActiveSearch}
+                      className={`px-4 py-3 rounded-lg text-xs font-bold border transition-colors ${
+                        isLight
+                          ? 'border-[#c1c9b6] bg-white text-[#38512a] hover:bg-[#f0f4e8]'
+                          : 'border-white/15 bg-white/5 text-slate-200 hover:bg-white/10'
+                      }`}
+                    >
+                      إلغاء
+                    </button>
+                  )}
                 </form>
               </div>
             )}
@@ -2890,6 +2949,11 @@ export const YTLinkerOps: React.FC<Props> = ({
                   </div>
 
                   {/* Loading State / Video Grid */}
+                  {!loading && searchError && items.length > 0 && (
+                    <div role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-center text-xs text-rose-600 dark:text-rose-200">
+                      {searchError}
+                    </div>
+                  )}
                   {loading ? (
                     <div className="mobile-results-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {Array.from({ length: 8 }).map((_, idx) => (
@@ -2908,8 +2972,25 @@ export const YTLinkerOps: React.FC<Props> = ({
                       : 'flex flex-col gap-2'
                     }`}>
                       {items.length === 0 ? (
-                        <div className="col-span-full py-10 text-center opacity-70 text-sm">
-                          {t(lang, 'noResults')}
+                        <div className="col-span-full py-10 text-center text-sm">
+                          {searchError ? (
+                            <div className="space-y-3">
+                              <p className="text-rose-500 dark:text-rose-300">{searchError}</p>
+                              <button
+                                type="button"
+                                onClick={() => executeSearchValue(query)}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                                  isLight
+                                    ? 'border-[#205100] text-[#205100] hover:bg-green-50'
+                                    : 'border-sky-400 text-sky-300 hover:bg-sky-500/10'
+                                }`}
+                              >
+                                إعادة المحاولة
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="opacity-70">{t(lang, 'noResults')}</span>
+                          )}
                         </div>
                       ) : (
                         getSortedVideos(items, videoSortOption).slice(0, displayedSearchCount).map((item) => {
@@ -3148,6 +3229,15 @@ export const YTLinkerOps: React.FC<Props> = ({
                           </>
                         )}
                       </button>
+                      {loadingMoreSearch && (
+                        <button
+                          type="button"
+                          onClick={cancelActiveSearch}
+                          className="px-4 py-2 rounded-lg text-xs font-bold border border-black/15 dark:border-white/15 opacity-80 hover:opacity-100"
+                        >
+                          إلغاء التحميل
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
