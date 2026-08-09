@@ -1522,7 +1522,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       const firstPageHasResults = mergePage(firstPage);
       // Fill the first visible batch with additional continuation pages when
       // a provider returns fewer than 50 results on its first response.
-      while (videoById.size < SEARCH_PAGE_SIZE && lastLoadedPage < 4 && firstPageHasResults) {
+      while (videoById.size < SEARCH_PAGE_SIZE && lastLoadedPage < 8 && firstPageHasResults) {
         const nextPage = lastLoadedPage + 1;
         const pageData = await fetchSearchPage(nextPage);
         const hadResults = mergePage(pageData);
@@ -1541,7 +1541,7 @@ export const YTLinkerOps: React.FC<Props> = ({
 
       setItems(returnedVideos.slice(0, SEARCH_PAGE_SIZE));
       setChannels(returnedChannels);
-      setHasMoreSearchResults(returnedVideos.length >= SEARCH_PAGE_SIZE || lastLoadedPage < 4);
+      setHasMoreSearchResults(returnedVideos.length >= SEARCH_PAGE_SIZE || lastLoadedPage < 8);
 
       setHistoryLogs((prev) => [
         `Search "${searchQuery}": Extracted ${returnedVideos.length} videos & ${returnedChannels.length} channels`,
@@ -1584,7 +1584,7 @@ export const YTLinkerOps: React.FC<Props> = ({
       let nextPage = searchPage;
       let pagesFetched = 0;
 
-      while (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched < 4) {
+      while (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched < 8) {
         nextPage += 1;
         pagesFetched += 1;
         const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(currentQuery)}&page=${nextPage}`);
@@ -1617,7 +1617,7 @@ export const YTLinkerOps: React.FC<Props> = ({
         setChannels((prev) => [...prev, ...addedChannels]);
         setSearchPage(nextPage);
         setDisplayedSearchCount((prev) => prev + SEARCH_PAGE_SIZE);
-        if (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched >= 4) setHasMoreSearchResults(false);
+        if (addedVideos.length < SEARCH_PAGE_SIZE && pagesFetched >= 8) setHasMoreSearchResults(false);
         showToast(
           lang === 'ar'
             ? `تم تحميل ${addedVideos.length} فيديو و ${addedChannels.length} قناة إضافية!`
