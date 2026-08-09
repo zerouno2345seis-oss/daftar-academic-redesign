@@ -257,6 +257,33 @@ export const deleteFavoriteFolderFromFirestore = async (id: string) => {
   }
 };
 
+// A single shared document for the user's favorite organizer preferences.
+// Keeping this separate from individual favorites makes colors and tags follow
+// the user across devices without duplicating settings on every saved item.
+export const syncFavoriteOrganizer = (onUpdate: (settings: any | null) => void) => {
+  try {
+    return onSnapshot(
+      doc(db, 'favoriteOrganizer', 'preferences'),
+      (snapshot) => onUpdate(snapshot.exists() ? snapshot.data() : null),
+      (error) => console.warn('Firestore favorite organizer listener error:', error)
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to favorite organizer settings:', err);
+    return () => {};
+  }
+};
+
+export const saveFavoriteOrganizerToFirestore = async (settings: { colors: unknown[]; tags: string[] }) => {
+  try {
+    await setDoc(doc(db, 'favoriteOrganizer', 'preferences'), {
+      ...settings,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (err) {
+    console.error('Error saving favorite organizer settings to Firestore:', err);
+  }
+};
+
 // Collection folders contain the full list of saved items in each folder.
 // Keeping them in their own collection makes folder structure and membership
 // available on every signed-in device, just like individual favorites.

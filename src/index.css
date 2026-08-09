@@ -1271,6 +1271,108 @@
   }
 }
 
+/* The search canvas has enough room for four compact cards on desktop.
+   This intentionally comes after earlier responsive declarations. */
+@media (min-width: 1024px) {
+  .desktop-video-results-grid.is-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Mobile keeps its familiar structure, but receives the same restrained
+   editorial palette, rounded cards, and gold accents as the desktop identity. */
+@media (max-width: 1023px) {
+  .light .mobile-main {
+    padding: 0.85rem;
+    background: linear-gradient(180deg, #fbf7ef 0%, #f6f1e6 100%);
+  }
+
+  .light .mobile-sticky-controls {
+    position: sticky;
+    top: 3.95rem;
+    z-index: 9;
+    margin: -0.15rem -0.15rem 0;
+    padding: 0.15rem;
+    background: rgba(251, 247, 239, 0.94);
+    backdrop-filter: blur(14px);
+  }
+
+  .light .mobile-search-card {
+    padding: 0.7rem;
+    border-color: #e5d8c5;
+    border-radius: 1rem;
+    box-shadow: 0 10px 24px rgba(61, 47, 31, 0.08);
+  }
+
+  .light .mobile-search-form input {
+    min-height: 2.7rem;
+    border-color: #dfd2be;
+    border-radius: 0.75rem;
+    background: #fffdf9;
+  }
+
+  .light .mobile-search-submit {
+    min-height: 2.7rem;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, #1d5b40, #153f2e);
+    box-shadow: 0 6px 14px rgba(29, 91, 64, 0.2);
+  }
+
+  .light .mobile-quick-nav {
+    margin-top: 0.55rem;
+    border: 1px solid #e5d8c5;
+    border-radius: 0.9rem;
+    background: rgba(255, 253, 249, 0.95);
+    box-shadow: 0 6px 18px rgba(61, 47, 31, 0.06);
+  }
+
+  .light .mobile-quick-nav-item,
+  .light .mobile-quick-nav-toggle {
+    border-radius: 0.65rem;
+  }
+
+  .light .mobile-section-tabs {
+    margin-top: 0.75rem;
+    border: 1px solid #e5d8c5;
+    border-radius: 0.85rem;
+    background: #fffdf9;
+    padding: 0.25rem;
+  }
+
+  .light .mobile-section-tabs > button {
+    border: 0;
+    border-radius: 0.65rem;
+  }
+
+  .light .mobile-section-tabs > button.bg-\[\#205100\] {
+    background: #1d5b40;
+    box-shadow: none;
+  }
+
+  .light .mobile-video-card,
+  .light .mobile-channel-card {
+    border-color: #e6ddcf;
+    border-radius: 1rem;
+    box-shadow: 0 7px 20px rgba(61, 47, 31, 0.06);
+  }
+
+  .light .mobile-video-thumb {
+    border-radius: 0.8rem 0 0 0.8rem;
+  }
+
+  .light .mobile-video-section .mobile-section-heading h3,
+  .light .mobile-channel-section .mobile-section-heading h3 {
+    color: #193f2d;
+    font-family: 'Noto Serif', serif;
+  }
+
+  .light .mobile-sticky-footer {
+    border-color: #e4d8c6;
+    background: rgba(255, 253, 249, 0.94);
+    box-shadow: 0 -8px 22px rgba(61, 47, 31, 0.07);
+  }
+}
+
 /* Approved editorial research-library surface. This intentionally scopes to
    wide, light screens so the existing mobile layout and dark theme retain
    their independent interaction designs. */

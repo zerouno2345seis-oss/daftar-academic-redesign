@@ -1,7 +1,13 @@
 export type ThemeMode = 'glacier-dark' | 'editorial-light';
 export type Language = 'ar' | 'en';
 
-export type ColorTag = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'none';
+export type ColorTag = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange' | 'pink' | 'teal' | 'none';
+export type FavoriteColorId = Exclude<ColorTag, 'none'>;
+
+export interface FavoriteColorSetting {
+  id: FavoriteColorId;
+  name: string;
+}
 
 export interface SearchResultItem {
   id: string;
@@ -17,6 +23,7 @@ export interface SearchResultItem {
   publishedAt?: string;
   description?: string;
   colorTag?: ColorTag;
+  tags?: string[];
   isFavorite?: boolean;
   folderId?: string;
 }

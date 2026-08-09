@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SearchResultItem, ChannelItem, PlaylistItem, Language, ThemeMode, ColorTag, FavoriteFolder, FavoriteItemType, TrashedFavorite } from '../types';
+import { SearchResultItem, ChannelItem, PlaylistItem, Language, ThemeMode, ColorTag, FavoriteColorId, FavoriteColorSetting, FavoriteFolder, FavoriteItemType, TrashedFavorite } from '../types';
 import { t } from '../utils/translations';
 import { BeforeInstallPromptEvent, clearDeferredInstallPrompt, getDeferredInstallPrompt } from '../pwa';
 import {
@@ -10,6 +10,8 @@ import {
   syncFavoriteFolders,
   saveFavoriteFolderToFirestore,
   deleteFavoriteFolderFromFirestore,
+  syncFavoriteOrganizer,
+  saveFavoriteOrganizerToFirestore,
   syncFavoriteTrash,
   saveFavoriteToTrash,
   deleteFavoriteFromTrash,
@@ -140,6 +142,25 @@ const upsertFavoriteVideo = (videos: SearchResultItem[], item: SearchResultItem)
   if (existingIndex < 0) return [item, ...videos];
   return videos.map((video, index) => index === existingIndex ? { ...video, ...item } : video);
 };
+
+const FAVORITE_COLOR_LIBRARY: Record<FavoriteColorId, { name: string; dotClass: string; borderClass: string }> = {
+  red: { name: 'أحمر', dotClass: 'bg-rose-500', borderClass: 'border-rose-500 ring-2 ring-rose-500/40 shadow-rose-500/20' },
+  blue: { name: 'أزرق', dotClass: 'bg-sky-400', borderClass: 'border-sky-400 ring-2 ring-sky-400/40 shadow-sky-400/20' },
+  green: { name: 'أخضر', dotClass: 'bg-emerald-500', borderClass: 'border-emerald-500 ring-2 ring-emerald-500/40 shadow-emerald-500/20' },
+  yellow: { name: 'أصفر', dotClass: 'bg-amber-400', borderClass: 'border-amber-400 ring-2 ring-amber-400/40 shadow-amber-400/20' },
+  purple: { name: 'بنفسجي', dotClass: 'bg-purple-500', borderClass: 'border-purple-500 ring-2 ring-purple-500/40 shadow-purple-500/20' },
+  orange: { name: 'برتقالي', dotClass: 'bg-orange-500', borderClass: 'border-orange-500 ring-2 ring-orange-500/40 shadow-orange-500/20' },
+  pink: { name: 'وردي', dotClass: 'bg-pink-500', borderClass: 'border-pink-500 ring-2 ring-pink-500/40 shadow-pink-500/20' },
+  teal: { name: 'فيروزي', dotClass: 'bg-teal-500', borderClass: 'border-teal-500 ring-2 ring-teal-500/40 shadow-teal-500/20' }
+};
+
+const DEFAULT_FAVORITE_COLORS: FavoriteColorSetting[] = ['red', 'blue', 'green', 'yellow', 'purple'].map((id) => ({
+  id: id as FavoriteColorId,
+  name: FAVORITE_COLOR_LIBRARY[id as FavoriteColorId].name
+}));
+
+const isFavoriteColorId = (value: unknown): value is FavoriteColorId =>
+  typeof value === 'string' && value !== 'none' && value in FAVORITE_COLOR_LIBRARY;
 
 const getSharedUrlHost = (value: string) => {
   try {
@@ -277,14 +298,61 @@ export const YTLinkerOps: React.FC<Props> = ({
   });
   const [activeFavoriteFolderId, setActiveFavoriteFolderId] = useState<string>('all');
   const [newFolderNameInput, setNewFolderNameInput] = useState('');
+  const [favoriteColorSettings, setFavoriteColorSettings] = useState<FavoriteColorSetting[]>(() => {
+    try {
+      const saved = localStorage.getItem('yt_linker_favorite_colors');
+      const parsed = saved ? JSON.parse(saved) : [];
+      const valid = Array.isArray(parsed)
+        ? parsed.filter((item): item is FavoriteColorSetting => isFavoriteColorId(item?.id) && typeof item?.name === 'string')
+        : [];
+      return valid.length > 0 ? valid : DEFAULT_FAVORITE_COLORS;
+    } catch {
+      return DEFAULT_FAVORITE_COLORS;
+    }
+  });
+  const [favoriteTags, setFavoriteTags] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('yt_linker_favorite_tags');
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string' && Boolean(tag.trim())) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [newFavoriteTag, setNewFavoriteTag] = useState('');
 
   useEffect(() => {
     localStorage.setItem('yt_linker_fav_folders', JSON.stringify(favoriteFolders));
   }, [favoriteFolders]);
 
   useEffect(() => {
+    localStorage.setItem('yt_linker_favorite_colors', JSON.stringify(favoriteColorSettings));
+  }, [favoriteColorSettings]);
+
+  useEffect(() => {
+    localStorage.setItem('yt_linker_favorite_tags', JSON.stringify(favoriteTags));
+  }, [favoriteTags]);
+
+  useEffect(() => {
     const unsubscribe = syncFavoriteFolders((folders) => {
       if (folders.length > 0) setFavoriteFolders(folders as FavoriteFolder[]);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = syncFavoriteOrganizer((settings) => {
+      if (!settings) return;
+      if (Array.isArray(settings.colors)) {
+        const colors = settings.colors.filter((item: unknown): item is FavoriteColorSetting => {
+          const color = item as FavoriteColorSetting;
+          return isFavoriteColorId(color?.id) && typeof color?.name === 'string';
+        });
+        if (colors.length > 0) setFavoriteColorSettings(colors);
+      }
+      if (Array.isArray(settings.tags)) {
+        setFavoriteTags(settings.tags.filter((tag: unknown): tag is string => typeof tag === 'string' && Boolean(tag.trim())));
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -304,6 +372,51 @@ export const YTLinkerOps: React.FC<Props> = ({
     showToast(`تم إنشاء مجلد "${trimmed}" داخل المفضلة`);
   };
 
+  const saveFavoriteOrganizer = (colors: FavoriteColorSetting[], tags: string[]) => {
+    setFavoriteColorSettings(colors);
+    setFavoriteTags(tags);
+    saveFavoriteOrganizerToFirestore({ colors, tags });
+  };
+
+  const handleAddFavoriteColor = (colorId: FavoriteColorId) => {
+    if (favoriteColorSettings.some((color) => color.id === colorId)) return;
+    saveFavoriteOrganizer(
+      [...favoriteColorSettings, { id: colorId, name: FAVORITE_COLOR_LIBRARY[colorId].name }],
+      favoriteTags
+    );
+  };
+
+  const handleRemoveFavoriteColor = (colorId: FavoriteColorId) => {
+    const colors = favoriteColorSettings.filter((color) => color.id !== colorId);
+    saveFavoriteOrganizer(colors, favoriteTags);
+  };
+
+  const handleRenameFavoriteColor = (colorId: FavoriteColorId, name: string) => {
+    const trimmed = name.trim() || FAVORITE_COLOR_LIBRARY[colorId].name;
+    const colors = favoriteColorSettings.map((color) => color.id === colorId ? { ...color, name: trimmed } : color);
+    setFavoriteColorSettings(colors);
+    saveFavoriteOrganizerToFirestore({ colors, tags: favoriteTags });
+
+    const colorFolderId = `color-${colorId}`;
+    const folder = favoriteFolders.find((item) => item.id === colorFolderId);
+    if (folder && folder.name !== trimmed) {
+      const updatedFolder = { ...folder, name: trimmed };
+      setFavoriteFolders((prev) => prev.map((item) => item.id === colorFolderId ? updatedFolder : item));
+      saveFavoriteFolderToFirestore(updatedFolder);
+    }
+  };
+
+  const handleAddFavoriteTag = () => {
+    const tag = newFavoriteTag.trim();
+    if (!tag || favoriteTags.some((item) => item.toLocaleLowerCase('ar') === tag.toLocaleLowerCase('ar'))) return;
+    saveFavoriteOrganizer(favoriteColorSettings, [...favoriteTags, tag]);
+    setNewFavoriteTag('');
+  };
+
+  const handleRemoveFavoriteTag = (tag: string) => {
+    saveFavoriteOrganizer(favoriteColorSettings, favoriteTags.filter((item) => item !== tag));
+  };
+
   const handleDeleteFavoriteFolder = (folderId: string) => {
     const affectedVideos = favoriteVideos.filter((video) => video.folderId === folderId);
     setFavoriteFolders((prev) => prev.filter((f) => f.id !== folderId));
@@ -317,6 +430,16 @@ export const YTLinkerOps: React.FC<Props> = ({
   const handleAssignFavoriteVideoToFolder = (video: SearchResultItem, folderId: string | undefined) => {
     const updated = { ...video, folderId };
     setFavoriteVideos((prev) => prev.map((v) => (v.id === video.id ? updated : v)));
+    saveFavoriteToFirestore(updated, 'video');
+  };
+
+  const handleToggleFavoriteVideoTag = (video: SearchResultItem, tag: string) => {
+    const currentTags = video.tags || [];
+    const tags = currentTags.includes(tag)
+      ? currentTags.filter((item) => item !== tag)
+      : [...currentTags, tag];
+    const updated = { ...video, tags };
+    setFavoriteVideos((prev) => prev.map((item) => item.id === video.id ? updated : item));
     saveFavoriteToFirestore(updated, 'video');
   };
 
@@ -407,6 +530,14 @@ export const YTLinkerOps: React.FC<Props> = ({
     setTrashedFavorites((prev) => prev.filter((item) => item.id !== entry.id));
     deleteFavoriteFromTrash(entry.id);
     showToast('تم حذف العنصر نهائيًا');
+  };
+
+  const previewTrashVideo = (entry: TrashedFavorite) => {
+    if (entry.type !== 'video') {
+      showToast('المعاينة المباشرة متاحة للفيديوهات فقط');
+      return;
+    }
+    openPlayerQueue([entry.item as SearchResultItem], 0, true);
   };
 
   const handleToggleFavoriteVideo = (video: SearchResultItem) => {
@@ -579,7 +710,10 @@ export const YTLinkerOps: React.FC<Props> = ({
     green: 3,
     yellow: 4,
     purple: 5,
-    none: 6
+    orange: 6,
+    pink: 7,
+    teal: 8,
+    none: 9
   };
 
   const getColorRank = (c?: ColorTag) => COLOR_ORDER[c || 'none'] || 6;
@@ -617,10 +751,40 @@ export const YTLinkerOps: React.FC<Props> = ({
     return copy;
   };
 
-  const handleSetItemColor = (id: string, color: ColorTag) => {
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, colorTag: i.colorTag === color ? 'none' : color } : i))
-    );
+  const handleSetItemColor = (id: string, color: FavoriteColorId) => {
+    const searchItem = items.find((item) => item.id === id);
+    if (!searchItem) return;
+
+    const colorSetting = favoriteColorSettings.find((item) => item.id === color) || {
+      id: color,
+      name: FAVORITE_COLOR_LIBRARY[color].name
+    };
+    const defaultFolderId = `color-${color}`;
+    const existingFolder = favoriteFolders.find((folder) => folder.id === defaultFolderId || folder.name === colorSetting.name);
+    const folder = existingFolder || {
+      id: defaultFolderId,
+      name: colorSetting.name,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!existingFolder) {
+      setFavoriteFolders((prev) => [folder, ...prev]);
+      saveFavoriteFolderToFirestore(folder);
+    }
+
+    const existingFavorite = favoriteVideos.find((item) => item.id === searchItem.id || item.url === searchItem.url);
+    const updated = {
+      ...searchItem,
+      ...existingFavorite,
+      colorTag: color,
+      folderId: folder.id,
+      isFavorite: true
+    };
+    setItems((prev) => prev.map((item) => item.id === id ? { ...item, colorTag: color } : item));
+    setFavoriteVideos((prev) => upsertFavoriteVideo(prev, updated));
+    removeFromTrashForItem(updated, 'video');
+    saveFavoriteToFirestore(updated, 'video');
+    showToast(`تم حفظ الفيديو في المفضلة داخل مجلد «${folder.name}»`);
   };
 
   const handleSetChannelColor = (id: string, color: ColorTag) => {
@@ -2556,25 +2720,6 @@ export const YTLinkerOps: React.FC<Props> = ({
                   <span>{t(lang, 'channelsSection')} ({channels.length})</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('collections')}
-                  className="desktop-only-tab desktop-tab-collections px-4 py-2 rounded-lg text-xs font-bold items-center gap-2 transition-all"
-                  title={t(lang, 'collectionsTab')}
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>{t(lang, 'collectionsTab')}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('favorites')}
-                  className="desktop-only-tab desktop-tab-favorites px-4 py-2 rounded-lg text-xs font-bold items-center gap-2 transition-all"
-                  title="المفضلة"
-                >
-                  <Heart className="w-3.5 h-3.5" />
-                  <span>المفضلة</span>
-                </button>
               </div>
 
               <div className="desktop-section-switcher" role="tablist" aria-label="التنقل بين الفيديوهات والقنوات">
@@ -3027,6 +3172,9 @@ export const YTLinkerOps: React.FC<Props> = ({
                             green: 'border-emerald-500 ring-2 ring-emerald-500/40 shadow-emerald-500/20',
                             yellow: 'border-amber-400 ring-2 ring-amber-400/40 shadow-amber-400/20',
                             purple: 'border-purple-500 ring-2 ring-purple-500/40 shadow-purple-500/20',
+                            orange: 'border-orange-500 ring-2 ring-orange-500/40 shadow-orange-500/20',
+                            pink: 'border-pink-500 ring-2 ring-pink-500/40 shadow-pink-500/20',
+                            teal: 'border-teal-500 ring-2 ring-teal-500/40 shadow-teal-500/20',
                             none: ''
                           };
                           const activeColorBorder = item.colorTag && item.colorTag !== 'none' ? colorBorders[item.colorTag] : '';
@@ -3062,15 +3210,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                             <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
                               {/* Quick Color Tag Palette */}
                               <div className="mobile-color-picker flex items-center gap-1 bg-black/75 px-2 py-1 rounded-full backdrop-blur-md border border-white/10 shadow-lg">
-                                {(['red', 'blue', 'green', 'yellow', 'purple'] as ColorTag[]).map((c) => {
-                                  const colorClasses: Record<ColorTag, string> = {
-                                    red: 'bg-rose-500',
-                                    blue: 'bg-sky-400',
-                                    green: 'bg-emerald-500',
-                                    yellow: 'bg-amber-400',
-                                    purple: 'bg-purple-500',
-                                    none: 'bg-gray-400'
-                                  };
+                                {favoriteColorSettings.map(({ id: c, name }) => {
                                   return (
                                     <button
                                       key={c}
@@ -3079,10 +3219,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                                         e.stopPropagation();
                                         handleSetItemColor(item.id, c);
                                       }}
-                                      className={`w-2.5 h-2.5 rounded-full transition-transform ${colorClasses[c]} ${
+                                      className={`w-2.5 h-2.5 rounded-full transition-transform ${FAVORITE_COLOR_LIBRARY[c].dotClass} ${
                                         item.colorTag === c ? 'scale-125 ring-2 ring-white shadow-md' : 'opacity-60 hover:opacity-100'
                                       }`}
-                                      title={`تصنيف لون: ${c}`}
+                                      title={`حفظ في مفضلة «${name}»`}
                                     />
                                   );
                                 })}
@@ -3342,9 +3482,12 @@ export const YTLinkerOps: React.FC<Props> = ({
                           red: 'border-rose-500 ring-2 ring-rose-500/40 shadow-rose-500/20',
                           blue: 'border-sky-400 ring-2 ring-sky-400/40 shadow-sky-400/20',
                           green: 'border-emerald-500 ring-2 ring-emerald-500/40 shadow-emerald-500/20',
-                          yellow: 'border-amber-400 ring-2 ring-amber-400/40 shadow-amber-400/20',
-                          purple: 'border-purple-500 ring-2 ring-purple-500/40 shadow-purple-500/20',
-                          none: ''
+                            yellow: 'border-amber-400 ring-2 ring-amber-400/40 shadow-amber-400/20',
+                            purple: 'border-purple-500 ring-2 ring-purple-500/40 shadow-purple-500/20',
+                            orange: 'border-orange-500 ring-2 ring-orange-500/40 shadow-orange-500/20',
+                            pink: 'border-pink-500 ring-2 ring-pink-500/40 shadow-pink-500/20',
+                            teal: 'border-teal-500 ring-2 ring-teal-500/40 shadow-teal-500/20',
+                            none: ''
                         };
                         const activeColorBorder = channel.colorTag && channel.colorTag !== 'none' ? colorBorders[channel.colorTag] : '';
 
@@ -3363,15 +3506,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                           {/* Channel Color Tag Dots & Favorite Star */}
                           <div className="mobile-channel-colors absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5">
                             <div className="flex items-center gap-1 bg-black/75 px-2 py-0.5 rounded-full backdrop-blur-md border border-white/10">
-                              {(['red', 'blue', 'green', 'yellow', 'purple'] as ColorTag[]).map((c) => {
-                                const colorClasses: Record<ColorTag, string> = {
-                                  red: 'bg-rose-500',
-                                  blue: 'bg-sky-400',
-                                  green: 'bg-emerald-500',
-                                  yellow: 'bg-amber-400',
-                                  purple: 'bg-purple-500',
-                                  none: 'bg-gray-400'
-                                };
+                              {favoriteColorSettings.map(({ id: c, name }) => {
                                 return (
                                   <button
                                     key={c}
@@ -3380,10 +3515,10 @@ export const YTLinkerOps: React.FC<Props> = ({
                                       e.stopPropagation();
                                       handleSetChannelColor(channel.id, c);
                                     }}
-                                    className={`w-2.5 h-2.5 rounded-full transition-transform ${colorClasses[c]} ${
+                                    className={`w-2.5 h-2.5 rounded-full transition-transform ${FAVORITE_COLOR_LIBRARY[c].dotClass} ${
                                       channel.colorTag === c ? 'scale-125 ring-2 ring-white shadow-md' : 'opacity-60 hover:opacity-100'
                                     }`}
-                                    title={`تصنيف لون القناة: ${c}`}
+                                    title={`تصنيف لون القناة: ${name}`}
                                   />
                                 );
                               })}
@@ -4026,6 +4161,28 @@ export const YTLinkerOps: React.FC<Props> = ({
                                     <option key={f.id} value={f.id}>{f.name}</option>
                                   ))}
                                 </select>
+                                {favoriteTags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1" aria-label="وسوم الفيديو">
+                                    {favoriteTags.map((tag) => {
+                                      const selected = (item.tags || []).includes(tag);
+                                      return (
+                                        <button
+                                          key={tag}
+                                          type="button"
+                                          onClick={() => handleToggleFavoriteVideoTag(item, tag)}
+                                          aria-pressed={selected}
+                                          className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border transition-colors ${
+                                            selected
+                                              ? 'bg-sky-500/15 text-sky-500 border-sky-500/40'
+                                              : 'opacity-60 border-black/10 dark:border-white/10 hover:opacity-100'
+                                          }`}
+                                        >
+                                          #{tag}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                                 <div className="flex items-center justify-between gap-2">
                                   <button
                                     onClick={() => openPlayerQueue(visibleFavoriteVideos, idx, true)}
@@ -4195,7 +4352,20 @@ export const YTLinkerOps: React.FC<Props> = ({
                     const remainingDays = Math.max(0, Math.ceil((new Date(entry.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
 
                     return (
-                      <article key={entry.id} className={`rounded-xl border p-3.5 ${isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'}`}>
+                      <article
+                        key={entry.id}
+                        onClick={() => previewTrashVideo(entry)}
+                        onKeyDown={(event) => {
+                          if (entry.type === 'video' && (event.key === 'Enter' || event.key === ' ')) {
+                            event.preventDefault();
+                            previewTrashVideo(entry);
+                          }
+                        }}
+                        role={entry.type === 'video' ? 'button' : undefined}
+                        tabIndex={entry.type === 'video' ? 0 : undefined}
+                        className={`rounded-xl border p-3.5 ${entry.type === 'video' ? 'cursor-pointer hover:border-sky-400 transition-colors' : ''} ${isLight ? 'bg-white border-[#c1c9b6]' : 'glass-card'}`}
+                        title={entry.type === 'video' ? 'اضغط لمعاينة الفيديو قبل استرجاعه' : undefined}
+                      >
                         <div className="flex items-start gap-3">
                           <img src={thumbnail} alt={title} className={`w-20 h-14 object-cover rounded-lg shrink-0 ${entry.type === 'channel' ? 'rounded-full' : ''}`} />
                           <div className="min-w-0 flex-1">
@@ -4204,9 +4374,19 @@ export const YTLinkerOps: React.FC<Props> = ({
                           </div>
                         </div>
                         <div className="mt-3 pt-3 border-t border-black/5 dark:border-white/5 flex items-center gap-2">
+                          {entry.type === 'video' && (
+                            <button
+                              type="button"
+                              onClick={(event) => { event.stopPropagation(); previewTrashVideo(entry); }}
+                              className="px-2.5 py-2 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-500 border border-sky-500/30 hover:bg-sky-500/20 flex items-center justify-center gap-1.5"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              معاينة
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => restoreFromTrash(entry)}
+                            onClick={(event) => { event.stopPropagation(); restoreFromTrash(entry); }}
                             className="flex-1 px-2.5 py-2 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20 flex items-center justify-center gap-1.5"
                           >
                             <Undo2 className="w-3.5 h-3.5" />
@@ -4214,7 +4394,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => permanentlyDeleteTrash(entry)}
+                            onClick={(event) => { event.stopPropagation(); permanentlyDeleteTrash(entry); }}
                             className="px-2.5 py-2 rounded-lg text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500/20"
                             title="حذف نهائيًا"
                             aria-label={`حذف ${title} نهائيًا`}
@@ -4346,6 +4526,116 @@ export const YTLinkerOps: React.FC<Props> = ({
                     </div>
                   )}
                 </div>
+
+                <section className={`rounded-xl border p-4 space-y-5 ${isLight ? 'border-[#c1c9b6] bg-[#f7fbed]' : 'border-sky-400/20 bg-sky-500/5'}`} aria-labelledby="favorite-organizer-title">
+                  <div>
+                    <h4 id="favorite-organizer-title" className="font-bold text-sm flex items-center gap-2">
+                      <Palette className="w-4 h-4 text-amber-500" />
+                      تنظيم المفضلة: ألوان وفئات ووسوم
+                    </h4>
+                    <p className="text-xs opacity-70 mt-1 leading-relaxed">الضغط على لون من بطاقة نتائج الفيديو يحفظه تلقائيًا في المفضلة داخل مجلد ذلك اللون.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h5 className="text-xs font-bold">ألوان التصنيف</h5>
+                      <span className="text-[10px] opacity-60">أضف أو احذف أو أعد تسمية اللون</span>
+                    </div>
+                    <div className="space-y-2">
+                      {favoriteColorSettings.map((color) => (
+                        <div key={color.id} className="flex items-center gap-2 rounded-lg border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/10 px-2 py-1.5">
+                          <span className={`w-4 h-4 rounded-full shrink-0 ${FAVORITE_COLOR_LIBRARY[color.id].dotClass}`} aria-hidden="true" />
+                          <input
+                            value={color.name}
+                            onChange={(event) => handleRenameFavoriteColor(color.id, event.target.value)}
+                            aria-label={`اسم لون ${color.name}`}
+                            className="min-w-0 flex-1 bg-transparent text-xs font-semibold outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFavoriteColor(color.id)}
+                            title={`إزالة اللون ${color.name}`}
+                            aria-label={`إزالة اللون ${color.name}`}
+                            className="p-1 text-rose-500 hover:bg-rose-500/10 rounded"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {(Object.keys(FAVORITE_COLOR_LIBRARY) as FavoriteColorId[])
+                        .filter((colorId) => !favoriteColorSettings.some((color) => color.id === colorId))
+                        .map((colorId) => (
+                          <button
+                            key={colorId}
+                            type="button"
+                            onClick={() => handleAddFavoriteColor(colorId)}
+                            className="px-2 py-1 rounded-md text-[10px] font-bold border border-black/10 dark:border-white/10 hover:border-sky-400 flex items-center gap-1"
+                          >
+                            <span className={`w-2.5 h-2.5 rounded-full ${FAVORITE_COLOR_LIBRARY[colorId].dotClass}`} />
+                            إضافة {FAVORITE_COLOR_LIBRARY[colorId].name}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 border-t border-black/10 dark:border-white/10 pt-4">
+                    <h5 className="text-xs font-bold">فئات المفضلة (المجلدات)</h5>
+                    <div className="flex gap-2">
+                      <input
+                        value={newFolderNameInput}
+                        onChange={(event) => setNewFolderNameInput(event.target.value)}
+                        onKeyDown={(event) => { if (event.key === 'Enter') handleCreateFavoriteFolder(newFolderNameInput); }}
+                        className="min-w-0 flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/10 px-2.5 py-2 text-xs outline-none focus:ring-2 focus:ring-sky-400"
+                        placeholder="اسم فئة جديدة"
+                      />
+                      <button type="button" onClick={() => handleCreateFavoriteFolder(newFolderNameInput)} className="px-3 py-2 rounded-lg text-xs font-bold bg-[#205100] text-white">
+                        إضافة
+                      </button>
+                    </div>
+                    {favoriteFolders.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {favoriteFolders.map((folder) => (
+                          <span key={folder.id} className="inline-flex items-center gap-1 rounded-full border border-black/10 dark:border-white/10 px-2 py-1 text-[10px] font-semibold">
+                            {folder.name}
+                            {!folder.id.startsWith('color-') && (
+                              <button type="button" onClick={() => handleDeleteFavoriteFolder(folder.id)} aria-label={`حذف فئة ${folder.name}`} className="text-rose-500 hover:opacity-70">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 border-t border-black/10 dark:border-white/10 pt-4">
+                    <h5 className="text-xs font-bold">الوسوم</h5>
+                    <div className="flex gap-2">
+                      <input
+                        value={newFavoriteTag}
+                        onChange={(event) => setNewFavoriteTag(event.target.value)}
+                        onKeyDown={(event) => { if (event.key === 'Enter') handleAddFavoriteTag(); }}
+                        className="min-w-0 flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/10 px-2.5 py-2 text-xs outline-none focus:ring-2 focus:ring-sky-400"
+                        placeholder="وسم جديد، مثل: للمشاهدة لاحقًا"
+                      />
+                      <button type="button" onClick={handleAddFavoriteTag} className="px-3 py-2 rounded-lg text-xs font-bold border border-sky-400/40 text-sky-500 hover:bg-sky-500/10">
+                        إضافة
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {favoriteTags.map((tag) => (
+                        <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 border border-sky-500/25 px-2 py-1 text-[10px] font-semibold text-sky-500">
+                          #{tag}
+                          <button type="button" onClick={() => handleRemoveFavoriteTag(tag)} aria-label={`حذف الوسم ${tag}`} className="hover:opacity-70">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
           )}
