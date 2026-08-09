@@ -658,7 +658,19 @@ export const YTLinkerOps: React.FC<Props> = ({
     });
   }, [previewVideo?.id]);
 
-  const openPlayerQueue = (videos: SearchResultItem[], startIndex: number = 0) => {
+  const openPlayerQueue = (videos: SearchResultItem[], startIndex: number = 0, openExternalRequested = false) => {
+    const requestedVideo = videos[startIndex];
+    const requestedYouTubeId = requestedVideo ? extractYouTubeVideoId(requestedVideo.url) || (/^[A-Za-z0-9_-]{11}$/.test(requestedVideo.id) ? requestedVideo.id : '') : '';
+
+    // Keep an external shared link tied to the card that was clicked. When a
+    // mixed favorites list contains YouTube and non-YouTube links, filtering
+    // first would shift the index and open an unrelated older video.
+    if (requestedVideo && !requestedYouTubeId && openExternalRequested) {
+      window.open(requestedVideo.url, '_blank', 'noopener,noreferrer');
+      showToast(lang === 'ar' ? 'هذا الرابط خارجي، تم فتحه في نافذة جديدة' : 'External link opened in a new window');
+      return;
+    }
+
     const valid = videos
       .filter((v) => v && (extractYouTubeVideoId(v.url) || /^[A-Za-z0-9_-]{11}$/.test(v.id)))
       .map((v) => ({ ...v, id: extractYouTubeVideoId(v.url) || v.id }));
@@ -672,7 +684,12 @@ export const YTLinkerOps: React.FC<Props> = ({
       }
       return;
     }
-    const safeIndex = Math.min(Math.max(startIndex, 0), valid.length - 1);
+    const requestedIndex = requestedYouTubeId
+      ? valid.findIndex((video) => video.id === requestedYouTubeId || video.url === requestedVideo?.url)
+      : -1;
+    const safeIndex = requestedIndex >= 0
+      ? requestedIndex
+      : Math.min(Math.max(startIndex, 0), valid.length - 1);
     setPlayerQueue(valid);
     setPlayerQueueIndex(safeIndex);
     setPreviewVideo(valid[safeIndex]);
@@ -3738,7 +3755,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                             <div className="aspect-video relative bg-slate-900 rounded-lg overflow-hidden mb-2 group/thumb">
                               <img src={item.thumbnail} alt={item.thumbnailAlt} className="w-full h-full object-cover" />
                               <button
-                                onClick={() => openPlayerQueue(visibleFavoriteVideos, idx)}
+                                onClick={() => openPlayerQueue(visibleFavoriteVideos, idx, true)}
                                 className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center text-white"
                               >
                                 <Play className="w-8 h-8 fill-current text-sky-400" />
@@ -3829,7 +3846,7 @@ export const YTLinkerOps: React.FC<Props> = ({
                                 </select>
                                 <div className="flex items-center justify-between gap-2">
                                   <button
-                                    onClick={() => openPlayerQueue(visibleFavoriteVideos, idx)}
+                                    onClick={() => openPlayerQueue(visibleFavoriteVideos, idx, true)}
                                     className="text-[11px] font-bold text-sky-400 hover:underline flex items-center gap-1"
                                   >
                                     <Play className="w-3 h-3 fill-current" />
