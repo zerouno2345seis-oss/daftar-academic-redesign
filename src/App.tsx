@@ -5,7 +5,9 @@ import { watchAuthState, signInWithGoogle, signOutUser } from './lib/firebase';
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => {
-    return (localStorage.getItem('ytlinker_theme') as ThemeMode) || 'glacier-dark';
+    // The approved visual direction is the editorial library surface. Existing
+    // user preferences still take precedence, including the optional dark mode.
+    return (localStorage.getItem('ytlinker_theme') as ThemeMode) || 'editorial-light';
   });
 
   // الواجهة عربية فقط (RTL) بشكل دائم — لا يوجد خيار لغة إنجليزية.

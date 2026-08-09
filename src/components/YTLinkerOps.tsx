@@ -2522,7 +2522,7 @@ export const YTLinkerOps: React.FC<Props> = ({
               <div className="desktop-section-tabs mobile-section-tabs flex items-center gap-3 border-b border-black/10 dark:border-white/10 pb-3">
                 <button
                   onClick={() => setSearchSection('all')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                  className={`desktop-tab-discover px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
                     searchSection === 'all'
                       ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
                       : 'opacity-70 hover:opacity-100'
@@ -2533,8 +2533,8 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </button>
 
                 <button
-                  onClick={() => setSearchSection('videos')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                  onClick={() => { setSearchSection('videos'); setDesktopResultSection('videos'); }}
+                  className={`desktop-tab-videos px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
                     searchSection === 'videos'
                       ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
                       : 'opacity-70 hover:opacity-100'
@@ -2545,8 +2545,8 @@ export const YTLinkerOps: React.FC<Props> = ({
                 </button>
 
                 <button
-                  onClick={() => setSearchSection('channels')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                  onClick={() => { setSearchSection('channels'); setDesktopResultSection('channels'); }}
+                  className={`desktop-tab-channels px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
                     searchSection === 'channels'
                       ? isLight ? 'bg-[#205100] text-white' : 'bg-sky-500 text-slate-950'
                       : 'opacity-70 hover:opacity-100'
@@ -2554,6 +2554,26 @@ export const YTLinkerOps: React.FC<Props> = ({
                 >
                   <Users className="w-3.5 h-3.5 text-sky-400" />
                   <span>{t(lang, 'channelsSection')} ({channels.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('collections')}
+                  className="desktop-only-tab desktop-tab-collections px-4 py-2 rounded-lg text-xs font-bold items-center gap-2 transition-all"
+                  title={t(lang, 'collectionsTab')}
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>{t(lang, 'collectionsTab')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('favorites')}
+                  className="desktop-only-tab desktop-tab-favorites px-4 py-2 rounded-lg text-xs font-bold items-center gap-2 transition-all"
+                  title="المفضلة"
+                >
+                  <Heart className="w-3.5 h-3.5" />
+                  <span>المفضلة</span>
                 </button>
               </div>
 
