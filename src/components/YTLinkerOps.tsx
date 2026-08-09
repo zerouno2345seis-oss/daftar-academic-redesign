@@ -4,6 +4,7 @@ import { t } from '../utils/translations';
 import { BeforeInstallPromptEvent, clearDeferredInstallPrompt, getDeferredInstallPrompt } from '../pwa';
 import {
   syncFirestoreFavorites,
+  normalizeFirestoreFavorite,
   saveFavoriteToFirestore,
   removeFavoriteFromFirestore,
   syncFavoriteFolders,
@@ -352,9 +353,11 @@ export const YTLinkerOps: React.FC<Props> = ({
   // Sync with Cloud Firestore
   useEffect(() => {
     const unsubscribe = syncFirestoreFavorites(({ videos, channels, playlists }) => {
-      if (videos.length > 0) setFavoriteVideos(videos);
-      if (channels.length > 0) setFavoriteChannels(channels);
-      if (playlists.length > 0) setFavoritePlaylists(playlists);
+      // Firestore is the shared source of truth. Updating even when a list is
+      // empty also removes items deleted from another device.
+      setFavoriteVideos(videos);
+      setFavoriteChannels(channels);
+      setFavoritePlaylists(playlists);
     });
     return () => unsubscribe();
   }, []);
@@ -366,7 +369,7 @@ export const YTLinkerOps: React.FC<Props> = ({
     return () => unsubscribe();
   }, []);
 
-  const favoriteIdentity = (item: { id?: string; url?: string }) => item.id || item.url || '';
+  const favoriteIdentity = (item: { id?: string; url?: string; firestoreId?: string }) => item.firestoreId || item.id || item.url || '';
 
   const removeFromTrashForItem = (item: { id?: string; url?: string }, type: FavoriteItemType) => {
     const trashId = `trash-${type}-${favoriteIdentity(item)}`.replace(/[\/\.#$\[\]]/g, '_');
@@ -386,7 +389,7 @@ export const YTLinkerOps: React.FC<Props> = ({
     };
     setTrashedFavorites((prev) => [trashItem, ...prev.filter((entry) => entry.id !== trashItem.id)]);
     saveFavoriteToTrash(trashItem);
-    removeFavoriteFromFirestore(identity);
+    removeFavoriteFromFirestore(item);
   };
 
   const restoreFromTrash = (entry: TrashedFavorite) => {
@@ -673,7 +676,11 @@ export const YTLinkerOps: React.FC<Props> = ({
   }, [previewVideo?.id]);
 
   const openPlayerQueue = (videos: SearchResultItem[], startIndex: number = 0, openExternalRequested = false) => {
-    const requestedVideo = videos[startIndex];
+    // Favorites can have been created by an older device/app version. Normalize
+    // them again at the play boundary so a legacy `videoId`, `link`, or bare
+    // YouTube id never prevents the second device from opening the item.
+    const normalizedVideos = videos.map((video) => normalizeFirestoreFavorite(video, 'video') as SearchResultItem);
+    const requestedVideo = normalizedVideos[startIndex];
     const requestedYouTubeId = requestedVideo ? extractYouTubeVideoId(requestedVideo.url) || (/^[A-Za-z0-9_-]{11}$/.test(requestedVideo.id) ? requestedVideo.id : '') : '';
 
     // Keep an external shared link tied to the card that was clicked. When a
@@ -685,11 +692,11 @@ export const YTLinkerOps: React.FC<Props> = ({
       return;
     }
 
-    const valid = videos
+    const valid = normalizedVideos
       .filter((v) => v && (extractYouTubeVideoId(v.url) || /^[A-Za-z0-9_-]{11}$/.test(v.id)))
       .map((v) => ({ ...v, id: extractYouTubeVideoId(v.url) || v.id }));
     if (valid.length === 0) {
-      const externalItem = videos.find((v) => v?.url);
+      const externalItem = normalizedVideos.find((v) => v?.url);
       if (externalItem) {
         setPreviewVideo(null);
         setExternalPreview(externalItem);

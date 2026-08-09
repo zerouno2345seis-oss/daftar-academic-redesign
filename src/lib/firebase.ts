@@ -20,6 +20,81 @@ import {
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
+type FavoriteKind = 'video' | 'channel' | 'playlist';
+
+const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+
+const getFirestoreDocumentId = (item: { firestoreId?: unknown; id?: unknown; url?: unknown } | string) => {
+  const candidate = typeof item === 'string'
+    ? item
+    : String(item.firestoreId || item.id || item.url || '');
+  return candidate.replace(/[\/.#$\[\]]/g, '_');
+};
+
+const getNormalizedHttpUrl = (...candidates: unknown[]) => {
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const value = candidate.trim();
+    if (!value) continue;
+    if (YOUTUBE_VIDEO_ID_PATTERN.test(value)) {
+      return `https://www.youtube.com/watch?v=${value}`;
+    }
+
+    const withProtocol = /^www\./i.test(value) ? `https://${value}` : value;
+    try {
+      const parsed = new URL(withProtocol);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.toString();
+    } catch {
+      // Try the next legacy field. Old favorites used several URL field names.
+    }
+  }
+  return '';
+};
+
+/**
+ * Make cloud favorites written by older app versions playable as well. Some
+ * early share-target records used `link`, `videoUrl`, or only a YouTube id.
+ * Keeping the normalizer at the Firestore boundary means every device gets a
+ * consistent, safe-to-open object before it reaches the UI.
+ */
+export const normalizeFirestoreFavorite = <T extends object>(
+  item: T,
+  type: FavoriteKind,
+  firestoreId?: string
+) => {
+  const source = item as Record<string, any>;
+  const url = getNormalizedHttpUrl(
+    source.url,
+    source.videoUrl,
+    source.link,
+    source.href,
+    source.videoId,
+    type === 'video' ? source.id : ''
+  );
+  const youtubeId = YOUTUBE_VIDEO_ID_PATTERN.test(String(source.videoId || ''))
+    ? String(source.videoId)
+    : YOUTUBE_VIDEO_ID_PATTERN.test(String(source.id || ''))
+      ? String(source.id)
+      : '';
+  const id = String(source.id || youtubeId || firestoreId || url);
+  const fallbackTitle = type === 'video' ? 'فيديو محفوظ' : type === 'channel' ? 'قناة محفوظة' : 'قائمة تشغيل محفوظة';
+  const fallbackThumbnail = youtubeId
+    ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`
+    : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=500&auto=format&fit=crop&q=60';
+
+  return {
+    ...source,
+    id,
+    url,
+    firestoreId: firestoreId || source.firestoreId || getFirestoreDocumentId(source),
+    title: source.title || source.name || fallbackTitle,
+    duration: source.duration || 'N/A',
+    thumbnail: source.thumbnail || source.image || fallbackThumbnail,
+    thumbnailAlt: source.thumbnailAlt || source.title || source.name || fallbackTitle,
+    selected: source.selected !== false
+  };
+};
+
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 
@@ -55,9 +130,10 @@ export const syncFirestoreFavorites = (
 
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          if (data.type === 'video') videos.push(data);
-          else if (data.type === 'channel') channels.push(data);
-          else if (data.type === 'playlist') playlists.push(data);
+          const normalized = normalizeFirestoreFavorite(data, data.type, docSnap.id);
+          if (data.type === 'video') videos.push(normalized);
+          else if (data.type === 'channel') channels.push(normalized);
+          else if (data.type === 'playlist') playlists.push(normalized);
         });
 
         onFavoritesUpdate({ videos, channels, playlists });
@@ -74,24 +150,27 @@ export const syncFirestoreFavorites = (
 
 export const saveFavoriteToFirestore = async (
   item: any,
-  type: 'video' | 'channel' | 'playlist'
+  type: FavoriteKind
 ) => {
   try {
-    const docId = String(item.id || item.url).replace(/[\/\.#$\[\]]/g, '_');
+    const docId = getFirestoreDocumentId(item);
+    if (!docId) throw new Error('A favorite needs an id or URL before it can be saved.');
     const docRef = doc(db, 'favorites', docId);
+    const normalized = normalizeFirestoreFavorite(item, type, docId);
     await setDoc(docRef, {
-      ...item,
+      ...normalized,
       type,
-      createdAt: new Date().toISOString()
-    });
+      createdAt: item.createdAt || new Date().toISOString()
+    }, { merge: true });
   } catch (err) {
     console.error('Error saving favorite to Firestore:', err);
   }
 };
 
-export const removeFavoriteFromFirestore = async (idOrUrl: string) => {
+export const removeFavoriteFromFirestore = async (item: { firestoreId?: unknown; id?: unknown; url?: unknown } | string) => {
   try {
-    const docId = String(idOrUrl).replace(/[\/\.#$\[\]]/g, '_');
+    const docId = getFirestoreDocumentId(item);
+    if (!docId) return;
     const docRef = doc(db, 'favorites', docId);
     await deleteDoc(docRef);
   } catch (err) {
