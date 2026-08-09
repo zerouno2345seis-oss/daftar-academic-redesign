@@ -1122,6 +1122,121 @@
   }
 }
 
+/* Desktop result modes and collapsed rail: these rules are deliberately last
+   so they override the earlier command-centre defaults rather than compete
+   with them. */
+@media (min-width: 1024px) {
+  .light .desktop-sidebar.is-collapsed {
+    width: 5rem !important;
+    padding-inline: 0.7rem;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-brand h1::after {
+    display: none;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-header {
+    min-height: 3.2rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-toggle {
+    position: static;
+    margin: 0 auto;
+  }
+
+  .light .desktop-main.desktop-main-sidebar-collapsed ~ .desktop-sticky-footer {
+    right: 5rem !important;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-actions > button:last-child {
+    display: inline-flex;
+    width: 100%;
+    justify-content: center;
+    padding-inline: 0.35rem;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-actions > button:last-child svg {
+    margin: 0;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-actions > button:last-child {
+    font-size: 0;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-actions > button:last-child::before {
+    content: 'نسخ';
+    font-size: 0.65rem;
+  }
+
+  .desktop-video-results-grid.is-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)) !important;
+    gap: 1.05rem !important;
+  }
+
+  .light .desktop-video-results-grid.is-grid .mobile-video-card {
+    min-height: 0;
+    flex-direction: column !important;
+    overflow: hidden;
+  }
+
+  .light .desktop-video-results-grid.is-grid .mobile-video-thumb {
+    width: 100%;
+    height: auto;
+    min-height: 8.7rem;
+    aspect-ratio: 16 / 9 !important;
+    flex-basis: auto;
+    align-self: stretch;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .light .desktop-video-results-grid.is-grid .mobile-video-details {
+    min-height: 8.2rem;
+    padding: 0.85rem;
+  }
+
+  .light .desktop-video-results-grid.is-grid .mobile-video-actions {
+    display: flex;
+  }
+
+  .desktop-video-results-grid.is-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.8rem !important;
+  }
+
+  .light .desktop-video-results-grid.is-list .mobile-video-card {
+    min-height: 9.6rem;
+    flex-direction: row !important;
+  }
+
+  .light .desktop-video-results-grid.is-list .mobile-video-thumb {
+    width: 14rem;
+    height: 8.2rem;
+    flex: 0 0 14rem;
+    margin: 0.65rem;
+  }
+
+  .desktop-channel-results-grid.is-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)) !important;
+    gap: 0.85rem !important;
+  }
+
+  .desktop-channel-results-grid.is-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.7rem !important;
+  }
+
+  .light .desktop-channel-results-grid.is-list .mobile-channel-card {
+    flex-direction: row !important;
+    align-items: center;
+  }
+}
+
 /* Approved editorial research-library surface. This intentionally scopes to
    wide, light screens so the existing mobile layout and dark theme retain
    their independent interaction designs. */
@@ -1952,5 +2067,91 @@
     color: white;
     background: #205100;
     border-color: #205100;
+  }
+}
+
+/* Final desktop overrides: the presentation mode must control layout rather
+   than be overwritten by the responsive defaults above. */
+@media (min-width: 1024px) {
+  .light .desktop-sidebar.is-collapsed {
+    width: 5rem !important;
+    padding-inline: 0.7rem;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-brand h1::after {
+    display: none;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-header {
+    min-height: 3.2rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .light .desktop-sidebar.is-collapsed .desktop-sidebar-toggle {
+    position: static;
+    margin: 0 auto;
+  }
+
+  .desktop-video-results-grid.is-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)) !important;
+    gap: 1.05rem !important;
+  }
+
+  .light .desktop-video-results-grid.is-grid .mobile-video-card {
+    min-height: 0;
+    flex-direction: column !important;
+    overflow: hidden;
+  }
+
+  .light .desktop-video-results-grid.is-grid .mobile-video-thumb {
+    width: 100%;
+    height: auto;
+    min-height: 8.7rem;
+    aspect-ratio: 16 / 9 !important;
+    flex-basis: auto;
+    align-self: stretch;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .light .desktop-video-results-grid.is-grid .mobile-video-details {
+    min-height: 8.2rem;
+    padding: 0.85rem;
+  }
+
+  .desktop-video-results-grid.is-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.8rem !important;
+  }
+
+  .light .desktop-video-results-grid.is-list .mobile-video-card {
+    min-height: 9.6rem;
+    flex-direction: row !important;
+  }
+
+  .light .desktop-video-results-grid.is-list .mobile-video-thumb {
+    width: 14rem;
+    height: 8.2rem;
+    flex: 0 0 14rem;
+    margin: 0.65rem;
+  }
+
+  .desktop-channel-results-grid.is-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)) !important;
+    gap: 0.85rem !important;
+  }
+
+  .desktop-channel-results-grid.is-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.7rem !important;
+  }
+
+  .light .desktop-channel-results-grid.is-list .mobile-channel-card {
+    flex-direction: row !important;
+    align-items: center;
   }
 }
