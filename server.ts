@@ -270,15 +270,24 @@ app.use((req, res, next) => {
 
   // Parallel search runner combining yts, HTML Scraper, and Piped/Invidious APIs
   async function searchYouTubeParallel(query: string, page: number) {
-    const timeoutMs = 3000;
+    const timeoutMs = 10000;
 
     const tryYts = async () => {
       try {
         const ytsWithTimeout = Promise.race([
-          // yt-search supports pageStart/pageEnd and follows YouTube's
-          // continuation token. Use the requested page for subsequent
-          // "load more" batches instead of repeating page one only.
-          yts({ query, pageStart: page, pageEnd: page }),
+          // yt-search returns cumulative pages when `pages` is used. Slice
+          // the requested page out of that cumulative result so page 2+ does
+          // not repeat page one (pageStart alone cannot resume without the
+          // continuation token from the first request).
+          yts({ query, pages: page }).then((result: any) => {
+            const pageSize = 20;
+            const start = Math.max(0, (page - 1) * pageSize);
+            return {
+              ...result,
+              videos: (result?.videos || []).slice(start, start + pageSize),
+              channels: page === 1 ? (result?.channels || []) : []
+            };
+          }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('yts timeout')), timeoutMs))
         ]);
         const res = await ytsWithTimeout;
