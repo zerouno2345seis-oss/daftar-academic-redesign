@@ -275,7 +275,10 @@ app.use((req, res, next) => {
     const tryYts = async () => {
       try {
         const ytsWithTimeout = Promise.race([
-          yts(query),
+          // yt-search supports pageStart/pageEnd and follows YouTube's
+          // continuation token. Use the requested page for subsequent
+          // "load more" batches instead of repeating page one only.
+          yts({ query, pageStart: page, pageEnd: page }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('yts timeout')), timeoutMs))
         ]);
         const res = await ytsWithTimeout;
@@ -326,9 +329,7 @@ app.use((req, res, next) => {
     let combinedVideos: any[] = [];
     let combinedChannels: any[] = [];
 
-    const providers = page === 1
-      ? [tryYts(), tryScrape(), tryFallback()]
-      : [tryScrape(), tryFallback()];
+    const providers = [tryYts(), tryScrape(), tryFallback()];
     const results = await Promise.allSettled(providers);
 
     for (const result of results) {
