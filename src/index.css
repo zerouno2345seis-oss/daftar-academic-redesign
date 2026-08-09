@@ -1126,6 +1126,36 @@
    so they override the earlier command-centre defaults rather than compete
    with them. */
 @media (min-width: 1024px) {
+  /* Keep the sole sidebar control directly above the non-interactive logo. */
+  .light .desktop-sidebar-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.7rem;
+  }
+
+  .light .desktop-sidebar-toggle {
+    position: static;
+    order: -1;
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: 0;
+  }
+
+  .light .desktop-sidebar-brand h1 .lucide-youtube {
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    color: #1d5b40;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
   .light .desktop-sidebar.is-collapsed {
     width: 5rem !important;
     padding-inline: 0.7rem;
@@ -1136,6 +1166,10 @@
   }
 
   .light .desktop-sidebar.is-collapsed .desktop-sidebar-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
     min-height: 3.2rem;
     margin-bottom: 1.25rem;
   }

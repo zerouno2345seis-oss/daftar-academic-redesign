@@ -2108,6 +2108,16 @@ export const YTLinkerOps: React.FC<Props> = ({
         isLight ? 'bg-[#d7dccf] border-[#c1c9b6] text-[#205100]' : 'bg-[#141c2e] border-white/10 text-sky-400'
       }`}>
         <div className="desktop-sidebar-header mb-6 px-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            className="desktop-sidebar-toggle p-2 rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            onClick={() => setDesktopSidebarCollapsed((collapsed) => !collapsed)}
+            aria-expanded={!desktopSidebarCollapsed}
+            aria-label={desktopSidebarCollapsed ? 'توسيع الشريط الجانبي' : 'طي الشريط الجانبي'}
+            title={desktopSidebarCollapsed ? 'توسيع الشريط الجانبي' : 'طي الشريط الجانبي'}
+          >
+            {desktopSidebarCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+          </button>
           <div className="desktop-sidebar-brand min-w-0">
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <Youtube className="w-6 h-6 text-red-500" />
@@ -2121,16 +2131,6 @@ export const YTLinkerOps: React.FC<Props> = ({
               <span>مزامنة نشطة</span>
             </div>
           </div>
-          <button
-            type="button"
-            className="desktop-sidebar-toggle p-2 rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-            onClick={() => setDesktopSidebarCollapsed((collapsed) => !collapsed)}
-            aria-expanded={!desktopSidebarCollapsed}
-            aria-label={desktopSidebarCollapsed ? 'توسيع الشريط الجانبي' : 'طي الشريط الجانبي'}
-            title={desktopSidebarCollapsed ? 'توسيع الشريط الجانبي' : 'طي الشريط الجانبي'}
-          >
-            {desktopSidebarCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
-          </button>
         </div>
 
         {/* Tab Selection */}
