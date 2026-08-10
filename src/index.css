@@ -1840,7 +1840,7 @@
   }
 
   .light .desktop-results-toolbar > :not(.desktop-results-overflow) {
-    display: none;
+    display: inline-flex;
   }
 
   .light .desktop-results-overflow-trigger {
